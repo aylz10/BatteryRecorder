@@ -508,9 +508,6 @@ class HistoryViewModel : ViewModel() {
         val calibrationValue = calibrationValue
         val recordScreenOffEnabled = recordScreenOffEnabled
 
-        _isRecordChartLoading.value = true
-        _recordChartUiState.value = RecordDetailChartUiState()
-
         viewModelScope.launch {
             try {
                 val chartUiState = withContext(Dispatchers.Default) {

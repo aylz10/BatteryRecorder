@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -219,12 +220,10 @@ fun RecordDetailScreen(
         val detailState = detail?.takeIf { isTargetRecordLoaded }
         val stats = detailState?.stats
         val durationMs = stats?.let { it.endTime - it.startTime }
-        val capacityChange = if (detailState?.type == BatteryStatus.Charging) {
-            stats!!.endCapacity - stats.startCapacity
-        } else if (detailState?.type == BatteryStatus.Discharging) {
-            stats!!.startCapacity - stats.endCapacity
-        } else {
-            null
+        val capacityChange = when (detailState?.type) {
+            BatteryStatus.Charging -> stats?.let { it.endCapacity - it.startCapacity }
+            BatteryStatus.Discharging -> stats?.let { it.startCapacity - it.endCapacity }
+            else -> null
         }
         val detailType = detailState?.type ?: recordsFile.type
         val typeLabel = if (detailType == BatteryStatus.Charging) "充电记录" else "放电记录"
@@ -447,7 +446,7 @@ fun RecordDetailScreen(
 @Composable
 private fun RecordDetailChartLoading(
     modifier: Modifier,
-    chartHeight: androidx.compose.ui.unit.Dp
+    chartHeight: Dp
 ) {
     Box(
         modifier = modifier
