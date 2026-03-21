@@ -3,6 +3,7 @@ project("batteryrecorder")
 
 add_library(batteryrecorder SHARED
         power_reader.c
+        dump_parser.cpp
 )
 
 find_library(log-lib log)
@@ -12,3 +13,4 @@ target_link_libraries(batteryrecorder
 )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")

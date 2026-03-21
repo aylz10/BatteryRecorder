@@ -16,6 +16,10 @@ class DumpsysSampler : Sampler {
             ServiceManager.getService("batteryproperties")
         )
 
+    private val prop = BatteryProperty()
+
+    private external fun nativeParseBatteryDumpPfd(pfd: ParcelFileDescriptor): LongArray
+
     init {
         LoggerX.d<DumpsysSampler>("init: 启用 Dumpsys 回退采样器")
     }
@@ -43,8 +47,8 @@ class DumpsysSampler : Sampler {
         var capacity = 0
         var status: BatteryStatus = BatteryStatus.Unknown
         var temp = 0
+        var readSideAutoClosed = false
         try {
-            val prop = BatteryProperty()
             registrar.getProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW, prop)
             current = prop.long
             registrar.getProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY, prop)
@@ -52,26 +56,40 @@ class DumpsysSampler : Sampler {
             registrar.getProperty(BatteryManager.BATTERY_PROPERTY_STATUS, prop)
             status = BatteryStatus.fromValue(prop.long.toInt())
 
-            ParcelFileDescriptor.AutoCloseInputStream(readSide).bufferedReader().use { reader ->
-                var line: String?
-                while ((reader.readLine().also { line = it }) != null) {
-                    if (line != null) if (flag) {
-                        when {
-                            line.contains("voltage:") -> {
-                                voltage = line.substringAfter(": ").trim().toLongOrNull() ?: 0
-                            }
+            try {
+                val result = nativeParseBatteryDumpPfd(readSide)
+                voltage = result.getOrNull(0) ?: 0
+                temp = (result.getOrNull(1) ?: 0).toInt()
+            } catch (e: UnsatisfiedLinkError) {
+                LoggerX.w<DumpsysSampler>("sample: JNI 未加载，回退 Kotlin 解析 dump 输出流", tr = e)
+                ParcelFileDescriptor.AutoCloseInputStream(readSide).bufferedReader().use { reader ->
+                    var line: String?
+                    while ((reader.readLine().also { line = it }) != null) {
+                        if (line != null) if (flag) {
+                            when {
+                                line.contains("voltage:") -> {
+                                    voltage = line.substringAfter(": ").trim().toLongOrNull() ?: 0
+                                }
 
-                            line.contains("temperature:") -> {
-                                temp = line.substringAfter(": ").trim().toIntOrNull() ?: 0
+                                line.contains("temperature:") -> {
+                                    temp = line.substringAfter(": ").trim().toIntOrNull() ?: 0
+                                }
                             }
-                        }
-                    } else if (line.contains("Current Battery Service state:")) flag = true
+                        } else if (line.contains("Current Battery Service state:")) flag = true
+                    }
                 }
+                readSideAutoClosed = true
             }
         } catch (e: Exception) {
             LoggerX.e<DumpsysSampler>("sample: 读取 dump 输出流失败", tr = e)
         } finally {
-            readSide.close()
+            if (!readSideAutoClosed) {
+                try {
+                    readSide.close()
+                } catch (e: Exception) {
+                    LoggerX.w<DumpsysSampler>("sample: 关闭 readSide 失败", tr = e)
+                }
+            }
         }
         BatteryManager.BATTERY_PROPERTY_CURRENT_NOW
         return Sampler.BatteryData(
