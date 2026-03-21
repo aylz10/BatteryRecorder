@@ -19,7 +19,6 @@ data class ServerActions(
 )
 
 data class LogActions(
-    val setMaxLinesPerFile: (Int) -> Unit,
     val setMaxHistoryDays: (Long) -> Unit,
     val setLogLevel: (LoggerX.LogLevel) -> Unit
 )

@@ -15,7 +15,6 @@ data class SettingsUiState(
     val alwaysPollingScreenStatusEnabled: Boolean = ConfigConstants.DEF_ALWAYS_POLLING_SCREEN_STATUS_ENABLED,
     val segmentDurationMin: Long = ConfigConstants.DEF_SEGMENT_DURATION_MIN,
     val rootBootAutoStartEnabled: Boolean = ConfigConstants.DEF_ROOT_BOOT_AUTO_START_ENABLED,
-    val maxLinesPerFile: Int = ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE,
     val maxHistoryDays: Long = ConfigConstants.DEF_LOG_MAX_HISTORY_DAYS,
     val logLevel: LoggerX.LogLevel = ConfigConstants.DEF_LOG_LEVEL,
     val gamePackages: Set<String> = emptySet(),

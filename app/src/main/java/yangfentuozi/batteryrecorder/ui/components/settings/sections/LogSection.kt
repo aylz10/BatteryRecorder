@@ -30,7 +30,6 @@ fun LogSection(
 ) {
     val state = props.state
     val actions = props.actions.log
-    var showMaxLinesDialog by remember { mutableStateOf(false) }
     var showHistoryDaysDialog by remember { mutableStateOf(false) }
     var showLogLevelDialog by remember { mutableStateOf(false) }
 
@@ -38,12 +37,6 @@ fun LogSection(
         title = "日志",
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
-        item {
-            SettingsItem(
-                title = "单文件最大行数",
-                summary = "${state.maxLinesPerFile} 行"
-            ) { showMaxLinesDialog = true }
-        }
 
         item {
             SettingsItem(
@@ -58,31 +51,6 @@ fun LogSection(
                 summary = state.logLevel.displayName
             ) { showLogLevelDialog = true }
         }
-    }
-
-    if (showMaxLinesDialog) {
-        LogValueDialog(
-            config = LogValueDialogConfig(
-                title = "单文件最大行数",
-                label = "日志行数",
-                currentValue = state.maxLinesPerFile.toString(),
-                errorMessage = "请输入大于等于 ${ConfigConstants.MIN_LOG_MAX_LINES_PER_FILE} 的整数",
-                parser = { rawValue ->
-                    rawValue.toLongOrNull()
-                        ?.takeIf { it >= ConfigConstants.MIN_LOG_MAX_LINES_PER_FILE }
-                        ?.takeIf { it <= Int.MAX_VALUE.toLong() }
-                },
-                onDismiss = { showMaxLinesDialog = false },
-                onSave = { parsedValue ->
-                    actions.setMaxLinesPerFile(parsedValue.toInt())
-                    showMaxLinesDialog = false
-                },
-                onReset = {
-                    actions.setMaxLinesPerFile(ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE)
-                    showMaxLinesDialog = false
-                }
-            )
-        )
     }
 
     if (showHistoryDaysDialog) {

@@ -64,10 +64,6 @@ class SettingsViewModel : ViewModel() {
         MutableStateFlow(ConfigConstants.DEF_ROOT_BOOT_AUTO_START_ENABLED)
     val rootBootAutoStartEnabled: StateFlow<Boolean> = _rootBootAutoStartEnabled.asStateFlow()
 
-    private val _maxLinesPerFile =
-        MutableStateFlow(ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE)
-    val maxLinesPerFile: StateFlow<Int> = _maxLinesPerFile.asStateFlow()
-
     private val _maxHistoryDays =
         MutableStateFlow(ConfigConstants.DEF_LOG_MAX_HISTORY_DAYS)
     val maxHistoryDays: StateFlow<Long> = _maxHistoryDays.asStateFlow()
@@ -214,14 +210,6 @@ class SettingsViewModel : ViewModel() {
                 ConfigConstants.DEF_ROOT_BOOT_AUTO_START_ENABLED
             )
 
-        _maxLinesPerFile.value =
-            prefs.getInt(
-                ConfigConstants.KEY_LOG_MAX_LINES_PER_FILE,
-                ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE
-            ).coerceAtLeast(
-                ConfigConstants.MIN_LOG_MAX_LINES_PER_FILE
-            )
-
         _maxHistoryDays.value =
             prefs.getLong(
                 ConfigConstants.KEY_LOG_MAX_HISTORY_DAYS,
@@ -244,7 +232,6 @@ class SettingsViewModel : ViewModel() {
             batchSize = _batchSize.value,
             screenOffRecordEnabled = _screenOffRecord.value,
             segmentDurationMin = _segmentDurationMin.value,
-            maxLinesPerFile = _maxLinesPerFile.value,
             maxHistoryDays = _maxHistoryDays.value,
             logLevel = _logLevel.value,
             alwaysPollingScreenStatusEnabled = _alwaysPollingScreenStatusEnabled.value
@@ -254,7 +241,6 @@ class SettingsViewModel : ViewModel() {
                 "batchSize=${serverConfig.batchSize} screenOffRecord=${serverConfig.screenOffRecordEnabled} " +
                 "polling=${serverConfig.alwaysPollingScreenStatusEnabled} logLevel=${serverConfig.logLevel}"
         )
-        LoggerX.maxLinesPerFile = _maxLinesPerFile.value
         LoggerX.maxHistoryDays = _maxHistoryDays.value
         LoggerX.logLevel = _logLevel.value
 
@@ -446,26 +432,6 @@ class SettingsViewModel : ViewModel() {
     }
 
     /**
-     * 更新单个日志文件允许写入的最大行数。
-     *
-     * @param value 用户输入的目标行数，最小为 1。
-     * @return 无返回值。
-     */
-    fun setMaxLinesPerFile(value: Int) {
-        val finalValue = value.coerceAtLeast(ConfigConstants.MIN_LOG_MAX_LINES_PER_FILE)
-        viewModelScope.launch {
-            prefs.edit {
-                putInt(ConfigConstants.KEY_LOG_MAX_LINES_PER_FILE, finalValue)
-            }
-            _maxLinesPerFile.value = finalValue
-            LoggerX.maxLinesPerFile = finalValue
-            serverConfig = serverConfig.copy(maxLinesPerFile = finalValue)
-            Service.service?.updateConfig(serverConfig)
-            refreshCombinedState()
-        }
-    }
-
-    /**
      * 更新日志文件保留天数。
      *
      * @param value 用户输入的目标天数，最小为 1。
@@ -591,7 +557,6 @@ class SettingsViewModel : ViewModel() {
             alwaysPollingScreenStatusEnabled = _alwaysPollingScreenStatusEnabled.value,
             segmentDurationMin = _segmentDurationMin.value,
             rootBootAutoStartEnabled = _rootBootAutoStartEnabled.value,
-            maxLinesPerFile = _maxLinesPerFile.value,
             maxHistoryDays = _maxHistoryDays.value,
             logLevel = _logLevel.value,
             gamePackages = _gamePackages.value,

@@ -64,7 +64,6 @@ object ConfigUtil {
                 var writeLatencyMs = ConfigConstants.DEF_WRITE_LATENCY_MS
                 var screenOffRecordEnabled = ConfigConstants.DEF_SCREEN_OFF_RECORD_ENABLED
                 var segmentDurationMin = ConfigConstants.DEF_SEGMENT_DURATION_MIN
-                var maxLinesPerFile = ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE
                 var maxHistoryDays = ConfigConstants.DEF_LOG_MAX_HISTORY_DAYS
                 var logLevel = ConfigConstants.DEF_LOG_LEVEL
                 var alwaysPollingScreenStatusEnabled = ConfigConstants.DEF_ALWAYS_POLLING_SCREEN_STATUS_ENABLED
@@ -91,10 +90,6 @@ object ConfigUtil {
                             ConfigConstants.KEY_SEGMENT_DURATION_MIN ->
                                 segmentDurationMin = valueAttr.toLongOrNull() ?: ConfigConstants.DEF_SEGMENT_DURATION_MIN
 
-                            ConfigConstants.KEY_LOG_MAX_LINES_PER_FILE ->
-                                maxLinesPerFile = valueAttr.toIntOrNull()
-                                    ?: ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE
-
                             ConfigConstants.KEY_LOG_MAX_HISTORY_DAYS ->
                                 maxHistoryDays = valueAttr.toLongOrNull()
                                     ?: ConfigConstants.DEF_LOG_MAX_HISTORY_DAYS
@@ -115,7 +110,6 @@ object ConfigUtil {
                     batchSize = batchSize,
                     screenOffRecordEnabled = screenOffRecordEnabled,
                     segmentDurationMin = segmentDurationMin,
-                    maxLinesPerFile = maxLinesPerFile,
                     maxHistoryDays = maxHistoryDays,
                     logLevel = logLevel,
                     alwaysPollingScreenStatusEnabled = alwaysPollingScreenStatusEnabled
@@ -147,10 +141,6 @@ object ConfigUtil {
                 ConfigConstants.DEF_SCREEN_OFF_RECORD_ENABLED
             ),
             segmentDurationMin = prefs.getLong(ConfigConstants.KEY_SEGMENT_DURATION_MIN, ConfigConstants.DEF_SEGMENT_DURATION_MIN),
-            maxLinesPerFile = prefs.getInt(
-                ConfigConstants.KEY_LOG_MAX_LINES_PER_FILE,
-                ConfigConstants.DEF_LOG_MAX_LINES_PER_FILE
-            ),
             maxHistoryDays = prefs.getLong(
                 ConfigConstants.KEY_LOG_MAX_HISTORY_DAYS,
                 ConfigConstants.DEF_LOG_MAX_HISTORY_DAYS
@@ -181,9 +171,6 @@ object ConfigUtil {
             segmentDurationMin = config.segmentDurationMin.coerceIn(
                 ConfigConstants.MIN_SEGMENT_DURATION_MIN,
                 ConfigConstants.MAX_SEGMENT_DURATION_MIN
-            ),
-            maxLinesPerFile = config.maxLinesPerFile.coerceAtLeast(
-                ConfigConstants.MIN_LOG_MAX_LINES_PER_FILE
             ),
             maxHistoryDays = config.maxHistoryDays.coerceAtLeast(
                 ConfigConstants.MIN_LOG_MAX_HISTORY_DAYS

@@ -75,7 +75,6 @@ class Server internal constructor() : IService.Stub() {
             LoggerX.d<Server>(
                 "[配置] 应用配置: intervalMs=${config.recordIntervalMs} writeLatencyMs=${config.writeLatencyMs} batchSize=${config.batchSize} screenOffRecord=${config.screenOffRecordEnabled} segmentDurationMin=${config.segmentDurationMin} logLevel=${config.logLevel} polling=${config.alwaysPollingScreenStatusEnabled}"
             )
-            LoggerX.maxLinesPerFile = config.maxLinesPerFile
             LoggerX.maxHistoryDays = config.maxHistoryDays
             LoggerX.logLevel = config.logLevel
 

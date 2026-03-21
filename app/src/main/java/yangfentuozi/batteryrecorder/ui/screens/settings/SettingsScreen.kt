@@ -62,7 +62,6 @@ fun SettingsScreen(
                 setRootBootAutoStartEnabled = settingsViewModel::setRootBootAutoStartEnabled
             ),
             log = LogActions(
-                setMaxLinesPerFile = settingsViewModel::setMaxLinesPerFile,
                 setMaxHistoryDays = settingsViewModel::setMaxHistoryDays,
                 setLogLevel = settingsViewModel::setLogLevel
             ),

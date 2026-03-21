@@ -92,11 +92,6 @@ object ConfigConstants {
     const val DEF_PRED_CURRENT_SESSION_WEIGHT_HALF_LIFE_MIN = 30L
 
     // common
-    /** 日志*/
-    const val KEY_LOG_MAX_LINES_PER_FILE = "log_max_lines_per_file"
-    const val MIN_LOG_MAX_LINES_PER_FILE = 1
-    const val DEF_LOG_MAX_LINES_PER_FILE = 5000
-
     /** 日志保留天数 */
     const val KEY_LOG_MAX_HISTORY_DAYS = "log_max_history_days"
     const val MIN_LOG_MAX_HISTORY_DAYS = 1L
