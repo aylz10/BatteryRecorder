@@ -40,6 +40,7 @@ class Monitor(
     }
 
     private var displayCallback: IDisplayManagerCallback? = null
+
     @Volatile
     private var displayCallbackRegistered = false
 
@@ -57,7 +58,8 @@ class Monitor(
     @Volatile
     var screenOffRecord: Boolean = ConfigConstants.DEF_SCREEN_OFF_RECORD_ENABLED
 
-    private var mAlwaysPollingScreenStatusEnabled: Boolean = ConfigConstants.DEF_ALWAYS_POLLING_SCREEN_STATUS_ENABLED
+    private var mAlwaysPollingScreenStatusEnabled: Boolean =
+        ConfigConstants.DEF_ALWAYS_POLLING_SCREEN_STATUS_ENABLED
     var alwaysPollingScreenStatusEnabled: Boolean
         get() = mAlwaysPollingScreenStatusEnabled
         set(value) {
@@ -86,20 +88,6 @@ class Monitor(
     private var thread = Thread({
         synchronized(lock) {
             while (!stopped) {
-                if (alwaysPollingScreenStatusEnabled && paused && !screenOffRecord) {
-                    val oldIsInteractive = isInteractive
-                    val latestIsInteractive = iPowerManager.isInteractive
-                    if (oldIsInteractive != latestIsInteractive) {
-                        LoggerX.d<Monitor>("@thread: 亮屏状态变化, $oldIsInteractive -> $latestIsInteractive")
-                    }
-                    isInteractive = latestIsInteractive
-                    if (!isInteractive) {
-                        lock.wait(recordIntervalMs)
-                        continue
-                    }
-                    LoggerX.d<Monitor>("@thread: 轮询检测到亮屏, 恢复采样")
-                    paused = false
-                }
                 try {
                     val timestamp = System.currentTimeMillis()
                     val sample = sampler.sample()
@@ -136,7 +124,10 @@ class Monitor(
                                 callbacks.getBroadcastItem(i)
                                     .onRecord(timestamp, power, status, temp)
                             } catch (e: RemoteException) {
-                                LoggerX.e<Monitor>("@callbackHandlerPost: onRecord 回调失败", tr = e)
+                                LoggerX.e<Monitor>(
+                                    "@callbackHandlerPost: onRecord 回调失败",
+                                    tr = e
+                                )
                             }
                         }
                         callbacks.finishBroadcast()
@@ -152,21 +143,16 @@ class Monitor(
                     paused = false
                     lock.wait(recordIntervalMs)
                 } else {
-                    if (!paused) {
-                        if (alwaysPollingScreenStatusEnabled) {
-                            LoggerX.d<Monitor>(
-                                "@thread: 暂停采样, 等待轮询亮屏, isInteractive=$isInteractive screenOffRecord=$screenOffRecord"
-                            )
-                        } else {
-                            LoggerX.d<Monitor>(
-                                "@thread: 暂停采样, 等待亮屏事件, isInteractive=$isInteractive screenOffRecord=$screenOffRecord"
-                            )
-                        }
-                    }
                     paused = true
                     if (alwaysPollingScreenStatusEnabled) {
-                        lock.wait(recordIntervalMs)
+                        LoggerX.d<Monitor>("@thread: 暂停采样, 等待轮询亮屏")
+
+                        while (!stopped && !screenOffRecord && !isInteractive && alwaysPollingScreenStatusEnabled) {
+                            lock.wait(recordIntervalMs)
+                            isInteractive = iPowerManager.isInteractive
+                        }
                     } else {
+                        LoggerX.d<Monitor>("@thread: 暂停采样, 等待亮屏事件")
                         lock.wait()
                     }
                 }
@@ -287,7 +273,7 @@ class Monitor(
             sendBinder()
         }
         if (currForegroundApp != packageName) {
-            LoggerX.d<Monitor>("onFocusedAppChanged: 应用切换, ${currForegroundApp} -> $packageName")
+            LoggerX.d<Monitor>("onFocusedAppChanged: 应用切换, $currForegroundApp -> $packageName")
         }
         currForegroundApp = packageName
     }
