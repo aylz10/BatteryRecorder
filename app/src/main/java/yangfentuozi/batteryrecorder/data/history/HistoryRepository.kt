@@ -105,7 +105,7 @@ object HistoryRepository {
         needCaching: Boolean
     ): HistoryRecord? {
         val cacheFile = getPowerStatsCacheFile(context.cacheDir, file.name)
-        LoggerX.d<HistoryRepository>(
+        LoggerX.v<HistoryRepository>(
             "[历史] 加载记录统计: file=${file.name} needCaching=$needCaching cache=${cacheFile.name}"
         )
         val stats = runCatching {
