@@ -46,6 +46,11 @@ private sealed interface CurrentRecordDisplayLoadResult {
     data class Failed(val recordsFile: RecordsFile, val error: Throwable) : CurrentRecordDisplayLoadResult
 }
 
+private data class LiveSegmentBuffer(
+    var recordsFileName: String? = null,
+    val points: ArrayList<Long> = ArrayList(MAX_LIVE_POINTS + 1)
+)
+
 class MainViewModel : ViewModel() {
     private val _serviceConnected = MutableStateFlow(false)
     val serviceConnected: StateFlow<Boolean> = _serviceConnected.asStateFlow()
@@ -84,8 +89,7 @@ class MainViewModel : ViewModel() {
     private var statisticsJob: Job? = null
     private var statisticsGeneration: Long = 0L
     private var pendingCurrentRecordsFile: RecordsFile? = null
-    private var activeLiveRecordsFileName: String? = null
-    private val liveBuffer = ArrayList<Long>(MAX_LIVE_POINTS + 1)
+    private val liveSegmentBuffer = LiveSegmentBuffer()
 
     private val serviceListener = object : Service.ServiceConnection {
         override fun onServiceConnected() {
@@ -188,26 +192,50 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * 清空实时采样缓存。
-     *
-     * @return 无返回值。
-     */
-    private fun clearLiveBuffer() {
-        liveBuffer.clear()
-    }
-
-    /**
      * 追加一条实时采样到当前分段缓存。
      *
      * @param power 原始功率采样值。
      * @return 追加后的实时曲线点集合。
      */
     private fun appendLivePoint(power: Long): List<Long> {
-        liveBuffer.add(power)
-        while (liveBuffer.size > MAX_LIVE_POINTS) {
-            liveBuffer.removeAt(0)
+        liveSegmentBuffer.points.add(power)
+        while (liveSegmentBuffer.points.size > MAX_LIVE_POINTS) {
+            liveSegmentBuffer.points.removeAt(0)
         }
-        return liveBuffer.toList()
+        return liveSegmentBuffer.points.toList()
+    }
+
+    /**
+     * 返回当前活动分段的实时点快照。
+     *
+     * @return 当前活动分段的实时点列表。
+     */
+    private fun snapshotLivePoints(): List<Long> {
+        return liveSegmentBuffer.points.toList()
+    }
+
+    /**
+     * 切换当前实时点缓存所属的记录文件。
+     *
+     * 分段一旦变化，必须立即清空实时点，禁止把旧分段曲线继续展示到新分段语义下。
+     *
+     * @param nextRecordsFileName 新的活动记录文件名，可为空。
+     * @return 无返回值。
+     */
+    private fun switchActiveLiveSegment(nextRecordsFileName: String?) {
+        if (liveSegmentBuffer.recordsFileName == nextRecordsFileName) {
+            return
+        }
+        LoggerX.d<MainViewModel>(
+            "[首页] 切换实时分段缓存: ${liveSegmentBuffer.recordsFileName} -> $nextRecordsFileName"
+        )
+        liveSegmentBuffer.recordsFileName = nextRecordsFileName
+        liveSegmentBuffer.points.clear()
+        _currentRecordUiState.value =
+            _currentRecordUiState.value.copy(
+                recordsFileName = nextRecordsFileName,
+                livePoints = emptyList()
+            )
     }
 
     fun loadStatistics(
@@ -288,14 +316,14 @@ class MainViewModel : ViewModel() {
         recordsFile: RecordsFile
     ) {
         runOnMainThread {
-            if (activeLiveRecordsFileName == recordsFile.name) {
+            if (liveSegmentBuffer.recordsFileName == recordsFile.name) {
                 return@runOnMainThread
             }
             pendingCurrentRecordsFile = recordsFile
-            activeLiveRecordsFileName = recordsFile.name
-            clearLiveBuffer()
+            switchActiveLiveSegment(recordsFile.name)
             _currentRecordUiState.value =
                 _currentRecordUiState.value.copy(
+                    recordsFileName = recordsFile.name,
                     displayStatus = recordsFile.type,
                     isSwitching = true,
                     record = null,
@@ -325,10 +353,19 @@ class MainViewModel : ViewModel() {
     ) {
         runOnMainThread {
             val pendingFile = pendingCurrentRecordsFile
+            if (pendingFile != null && liveSegmentBuffer.recordsFileName != pendingFile.name) {
+                switchActiveLiveSegment(pendingFile.name)
+            }
             val nextDisplayStatus = pendingFile?.type ?: sample.status
-            val nextLivePoints = appendLivePoint(sample.power)
+            val currentUiState = _currentRecordUiState.value
+            val nextLivePoints = if (liveSegmentBuffer.recordsFileName != null) {
+                appendLivePoint(sample.power)
+            } else {
+                currentUiState.livePoints
+            }
             _currentRecordUiState.value =
-                _currentRecordUiState.value.copy(
+                currentUiState.copy(
+                    recordsFileName = liveSegmentBuffer.recordsFileName,
                     displayStatus = nextDisplayStatus,
                     livePoints = nextLivePoints,
                     lastTemp = sample.temp
@@ -381,8 +418,8 @@ class MainViewModel : ViewModel() {
 
     private fun clearDisplayedHomeState() {
         pendingCurrentRecordsFile = null
-        activeLiveRecordsFileName = null
-        clearLiveBuffer()
+        liveSegmentBuffer.recordsFileName = null
+        liveSegmentBuffer.points.clear()
         _chargeSummary.value = null
         _dischargeSummary.value = null
         _currentRecordUiState.value = CurrentRecordUiState()
@@ -445,7 +482,6 @@ class MainViewModel : ViewModel() {
                 }
 
                 val serviceCurrentRecordsFile = getServiceCurrentRecordsFile()
-                val previousUiState = _currentRecordUiState.value
                 val targetRecordsFile = when {
                     pendingCurrentRecordsFile != null &&
                         serviceCurrentRecordsFile != null &&
@@ -511,6 +547,12 @@ class MainViewModel : ViewModel() {
                     serviceCurrentRecordsFile?.type == BatteryStatus.Discharging -> serviceCurrentRecordsFile.name
                     else -> null
                 }
+                val nextActiveLiveRecordsFileName = when {
+                    nextPendingRecordsFile != null -> nextPendingRecordsFile.name
+                    resolvedCurrentRecord != null -> resolvedCurrentRecord.name
+                    serviceCurrentRecordsFile != null -> serviceCurrentRecordsFile.name
+                    else -> null
+                }
                 val stats = withContext(Dispatchers.IO) {
                     SceneStatsComputer.compute(
                         context = context,
@@ -524,21 +566,22 @@ class MainViewModel : ViewModel() {
                     _chargeSummary.value = chargeSummary
                     _dischargeSummary.value = dischargeSummary
                     pendingCurrentRecordsFile = nextPendingRecordsFile
-                    activeLiveRecordsFileName =
-                        nextPendingRecordsFile?.name ?: resolvedCurrentRecord?.name ?: activeLiveRecordsFileName
+                    switchActiveLiveSegment(nextActiveLiveRecordsFileName)
+                    val currentUiState = _currentRecordUiState.value
 
                     val nextDisplayStatus = when {
                         nextPendingRecordsFile != null -> nextPendingRecordsFile.type
                         resolvedCurrentRecord != null -> resolvedCurrentRecord.type
                         serviceCurrentRecordsFile != null -> serviceCurrentRecordsFile.type
-                        else -> previousUiState.displayStatus
+                        else -> currentUiState.displayStatus
                     }
                     _currentRecordUiState.value =
-                        previousUiState.copy(
+                        currentUiState.copy(
+                            recordsFileName = liveSegmentBuffer.recordsFileName,
                             displayStatus = nextDisplayStatus,
                             isSwitching = nextPendingRecordsFile != null,
                             record = resolvedCurrentRecord,
-                            livePoints = liveBuffer.toList()
+                            livePoints = snapshotLivePoints()
                         )
 
                     _sceneStats.value = stats?.displayStats

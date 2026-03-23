@@ -9,6 +9,7 @@ import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
  * 该状态只描述当前记录卡片自身，不承载场景统计或预测结果。
  */
 data class CurrentRecordUiState(
+    val recordsFileName: String? = null,
     val displayStatus: BatteryStatus = BatteryStatus.Unknown,
     val isSwitching: Boolean = false,
     val record: HistoryRecord? = null,
