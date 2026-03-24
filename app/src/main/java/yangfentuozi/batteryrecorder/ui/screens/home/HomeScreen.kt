@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import yangfentuozi.batteryrecorder.ipc.Service
 import yangfentuozi.batteryrecorder.server.recorder.IRecordListener
 import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
+import yangfentuozi.batteryrecorder.shared.data.RecordsFile
 import yangfentuozi.batteryrecorder.ui.components.global.SplicedColumnGroup
 import yangfentuozi.batteryrecorder.ui.components.home.BatteryRecorderTopAppBar
 import yangfentuozi.batteryrecorder.ui.components.home.CurrentRecordCard
@@ -49,8 +50,8 @@ import yangfentuozi.batteryrecorder.ui.components.home.StartServerCard
 import yangfentuozi.batteryrecorder.ui.components.home.StatsCard
 import yangfentuozi.batteryrecorder.ui.dialog.home.AboutDialog
 import yangfentuozi.batteryrecorder.ui.dialog.home.AdbGuideDialog
+import yangfentuozi.batteryrecorder.ui.model.LiveRecordSample
 import yangfentuozi.batteryrecorder.ui.theme.AppShape
-import yangfentuozi.batteryrecorder.ui.viewmodel.LiveRecordViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.MainViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 import java.time.LocalDateTime
@@ -60,7 +61,6 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel = viewModel(),
-    liveRecordViewModel: LiveRecordViewModel = viewModel(),
     settingsViewModel: SettingsViewModel,
     onNavigateToSettings: () -> Unit = {},
     onNavigateToHistoryList: (BatteryStatus) -> Unit = {},
@@ -75,18 +75,16 @@ fun HomeScreen(
     var showAdbGuideDialog by remember { mutableStateOf(false) }
     val chargeSummary by viewModel.chargeSummary.collectAsState()
     val dischargeSummary by viewModel.dischargeSummary.collectAsState()
-    val currentRecord by viewModel.currentRecord.collectAsState()
-    val liveStatus by liveRecordViewModel.lastStatus.collectAsState()
+    val currentRecordUiState by viewModel.currentRecordUiState.collectAsState()
 
     val settingsState by settingsViewModel.settingsUiState.collectAsState()
     val settingsInitialized by settingsViewModel.initialized.collectAsState()
     val statisticsRequest by settingsViewModel.statisticsRequest.collectAsState()
     val latestSettingsInitialized by rememberUpdatedState(settingsInitialized)
     val latestStatisticsRequest by rememberUpdatedState(statisticsRequest)
-    var prevServiceConnected by remember { mutableStateOf(serviceConnected) }
+    var prevServiceConnected by remember { mutableStateOf(false) }
     val dualCellEnabled = settingsState.dualCellEnabled
     val calibrationValue = settingsState.calibrationValue
-    val intervalMs = settingsState.recordIntervalMs
     val dischargeDisplayPositive = settingsState.dischargeDisplayPositive
 
     // 首页续航卡片与场景卡片共用同一批统计结果。
@@ -108,41 +106,55 @@ fun HomeScreen(
     val listener = remember {
         object : IRecordListener.Stub() {
             override fun onRecord(timestamp: Long, power: Long, status: BatteryStatus, temp: Int) {
-                liveRecordViewModel.handleRecord(power, status, temp)
+                viewModel.onRecordSample(
+                    context = context,
+                    request = latestStatisticsRequest,
+                    sample = LiveRecordSample(
+                        power = power,
+                        status = status,
+                        temp = temp
+                    )
+                )
             }
 
-            override fun onChangedCurrRecordsFile() {
-                // 当前记录文件切段后，首页统计与预测都要按最新文件重算。
-                viewModel.forceRefreshStatistics(
+            override fun onChangedCurrRecordsFile(recordsFile: RecordsFile) {
+                // 当前记录文件切段后，立即切到新分段语义；统计未就绪时显示等待状态。
+                viewModel.onCurrentRecordsFileChanged(
                     context = context,
-                    request = latestStatisticsRequest
+                    request = latestStatisticsRequest,
+                    recordsFile = recordsFile
                 )
             }
         }
     }
 
-    LaunchedEffect(serviceConnected) {
+    LaunchedEffect(serviceConnected, settingsInitialized) {
+        if (!settingsInitialized) return@LaunchedEffect
         val shouldDoDelayedRefresh = serviceConnected && !prevServiceConnected
         prevServiceConnected = serviceConnected
-        if (!shouldDoDelayedRefresh || !settingsInitialized) return@LaunchedEffect
+        if (!shouldDoDelayedRefresh) return@LaunchedEffect
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return@LaunchedEffect
+        }
 
         Service.service?.registerRecordListener(listener)
         run {
             delay(1500)
-            viewModel.refreshStatistics(
+            viewModel.refreshStatisticsTrackingCurrentRecord(
                 context = context,
                 request = statisticsRequest
             )
         }
     }
 
-    LaunchedEffect(liveStatus) {
-        viewModel.onLiveStatusChanged(context, liveStatus, intervalMs)
-    }
-
-    LaunchedEffect(settingsInitialized, statisticsRequest) {
+    LaunchedEffect(settingsInitialized) {
         if (!settingsInitialized) return@LaunchedEffect
-        viewModel.forceRefreshStatistics(
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            return@LaunchedEffect
+        }
+        // 首次设置初始化完成时补一次前台刷新；后续页面恢复依赖 ON_START，
+        // 避免返回首页时走 ClearAndReload 先清空卡片与统计。
+        viewModel.refreshStatisticsTrackingCurrentRecord(
             context = context,
             request = statisticsRequest
         )
@@ -160,7 +172,7 @@ fun HomeScreen(
             when (event) {
                 Lifecycle.Event.ON_START -> {
                     if (latestSettingsInitialized) {
-                        viewModel.refreshStatistics(
+                        viewModel.refreshStatisticsTrackingCurrentRecord(
                             context = context,
                             request = latestStatisticsRequest
                         )
@@ -251,14 +263,15 @@ fun HomeScreen(
 
                     item {
                         CurrentRecordCard(
-                            record = currentRecord,
+                            uiState = currentRecordUiState,
                             dualCellEnabled = dualCellEnabled,
                             calibrationValue = calibrationValue,
-                            viewModel = liveRecordViewModel,
                             dischargeDisplayPositive = dischargeDisplayPositive,
                             onClick = {
-                                currentRecord?.let { record ->
-                                    onNavigateToRecordDetail(record.type, record.name)
+                                if (!currentRecordUiState.isSwitching) {
+                                    currentRecordUiState.record?.let { record ->
+                                        onNavigateToRecordDetail(record.type, record.name)
+                                    }
                                 }
                             }
                         )
@@ -286,11 +299,7 @@ fun HomeScreen(
                         }
                     }
 
-                    val isDischarging = when (liveStatus) {
-                        BatteryStatus.Discharging -> true
-                        BatteryStatus.Charging -> false
-                        else -> currentRecord?.type == BatteryStatus.Discharging
-                    }
+                    val isDischarging = currentRecordUiState.displayStatus == BatteryStatus.Discharging
 
                     // 应用预测仅在放电语义下成立，充电记录不展示入口。
                     if (isDischarging) {
@@ -301,7 +310,6 @@ fun HomeScreen(
                             )
                         }
                     }
-
                     item {
                         SceneStatsCard(
                             sceneStats = sceneStats,

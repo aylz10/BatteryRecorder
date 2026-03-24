@@ -36,7 +36,16 @@ data class HistorySummary(
     val totalScreenOffMs: Long
 )
 
+sealed interface CurrentRecordLoadResult {
+    data class Success(val record: HistoryRecord) : CurrentRecordLoadResult
+    data class InsufficientSamples(val recordsFile: RecordsFile) : CurrentRecordLoadResult
+    data class Missing(val recordsFile: RecordsFile) : CurrentRecordLoadResult
+    data class Failed(val recordsFile: RecordsFile, val error: Throwable) : CurrentRecordLoadResult
+}
+
 object HistoryRepository {
+
+    private const val NOT_ENOUGH_VALID_SAMPLES_PREFIX = "Not enough valid samples after filtering:"
 
     // 记录文件名由“起始时间戳.txt”组成；无法解析的文件必须显式告警并从记录链路中过滤。
     private fun recordFileTimestampOrNull(file: File): Long? =
@@ -84,6 +93,11 @@ object HistoryRepository {
         )
     }
 
+    private fun Throwable.isInsufficientSamplesError(): Boolean {
+        return this is IllegalStateException &&
+            message?.startsWith(NOT_ENOUGH_VALID_SAMPLES_PREFIX) == true
+    }
+
     /** 加载统计数据并构建 HistoryRecord */
     fun loadStats(
         context: Context,
@@ -91,7 +105,7 @@ object HistoryRepository {
         needCaching: Boolean
     ): HistoryRecord? {
         val cacheFile = getPowerStatsCacheFile(context.cacheDir, file.name)
-        LoggerX.d<HistoryRepository>(
+        LoggerX.v<HistoryRepository>(
             "[历史] 加载记录统计: file=${file.name} needCaching=$needCaching cache=${cacheFile.name}"
         )
         val stats = runCatching {
@@ -177,6 +191,34 @@ object HistoryRepository {
         return serviceFile?.let { file ->
             loadStats(context, file, false)
         }
+    }
+
+    fun loadCurrentRecord(
+        context: Context,
+        recordsFile: RecordsFile
+    ): CurrentRecordLoadResult {
+        val sourceFile = recordsFile.toFile(context)
+            ?: return CurrentRecordLoadResult.Missing(recordsFile)
+        val latestFile = listSortedRecordFiles(sourceFile.parentFile ?: return CurrentRecordLoadResult.Missing(recordsFile))
+            .firstOrNull()
+        val cacheFile = getPowerStatsCacheFile(context.cacheDir, sourceFile.name)
+        val stats = runCatching {
+            RecordsStats.getCachedStats(
+                cacheFile = cacheFile,
+                sourceFile = sourceFile,
+                needCaching = latestFile != sourceFile
+            )
+        }.getOrElse { error ->
+            if (error.isInsufficientSamplesError()) {
+                LoggerX.w<HistoryRepository>(
+                    "[历史] 当前记录样本不足，等待更多采样: ${sourceFile.absolutePath}"
+                )
+                return CurrentRecordLoadResult.InsufficientSamples(recordsFile)
+            }
+            LoggerX.e<HistoryRepository>("[历史] 加载当前记录失败: ${sourceFile.absolutePath}", tr = error)
+            return CurrentRecordLoadResult.Failed(recordsFile, error)
+        }
+        return CurrentRecordLoadResult.Success(buildHistoryRecord(sourceFile, stats))
     }
 
     /** 加载统计摘要，按时长加权计算平均功率 */

@@ -175,7 +175,7 @@ object DischargeRecordScanner {
                 return@forEach
             }
             acceptedFileCount += 1
-            LoggerX.d<DischargeRecordScanner>(
+            LoggerX.v<DischargeRecordScanner>(
                 "[预测] 放电文件通过: file=${file.name} intervals=${acceptedFile.intervals.size} rawDurationMs=${acceptedFile.rawTotalDurationMs} rawSocDrop=${acceptedFile.rawTotalCapDrop}"
             )
             onAcceptedFile(acceptedFile)

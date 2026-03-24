@@ -102,7 +102,8 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 ### 首页统计与预测链路
 
 - `BatteryRecorderApp` 创建并下传 `MainViewModel`、`SettingsViewModel`
-- `HomeScreen` 局部创建 `LiveRecordViewModel`
+- 首页当前记录链路已收敛到 `MainViewModel`，`HomeScreen` 不再局部创建 `LiveRecordViewModel`
+- `CurrentRecordCard` 直接消费 `MainViewModel.currentRecordUiState`
 - 首页的“续航预测卡片”和“场景统计卡片”都定义在 `ui/components/home/PredictionCard.kt`
 - 首页统计刷新参数统一来自 `SettingsViewModel.statisticsRequest`
 - 首页支持日志导出、ADB 引导、关于弹窗、首次文档引导与启动更新检查
@@ -358,7 +359,7 @@ shared/src/main/
 - `MainViewModel` 与 `SettingsViewModel` 在 `BatteryRecorderApp` 创建并向下传递
 - `SettingsViewModel.init(context)` 在应用入口阶段完成 SharedPreferences 初始化
 - `HistoryViewModel` 在 `BatteryRecorderNavHost` 创建共享实例，不是“每个历史页面各建一个”
-- `LiveRecordViewModel` 在 `HomeScreen` 局部创建
+- 首页当前记录卡片、实时曲线与等待态统一由 `MainViewModel.currentRecordUiState` 提供
 - `PredictionDetailViewModel` 在 `PredictionDetailScreen` 局部创建
 - 当前实现中，`HomeScreen` 会直接访问 `Service.service` 注册/反注册 `IRecordListener`；修改该链路时必须同时检查生命周期与监听释放
 - `HistoryRepository` 负责文件 I/O、解析、缓存和统计，不承载 Compose 展示逻辑

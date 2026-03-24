@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -36,10 +34,9 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import yangfentuozi.batteryrecorder.data.history.HistoryRecord
 import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
 import yangfentuozi.batteryrecorder.ui.components.global.StatRow
-import yangfentuozi.batteryrecorder.ui.viewmodel.LiveRecordViewModel
+import yangfentuozi.batteryrecorder.ui.model.CurrentRecordUiState
 import yangfentuozi.batteryrecorder.utils.computePowerW
 import yangfentuozi.batteryrecorder.utils.formatDateTime
 import yangfentuozi.batteryrecorder.utils.formatDurationHours
@@ -64,32 +61,47 @@ private const val LAST_POINT_INNER_ALPHA = 0.9f             // 最新数据点�
 
 @Composable
 fun CurrentRecordCard(
-    record: HistoryRecord?,
+    uiState: CurrentRecordUiState,
     modifier: Modifier = Modifier,
     dualCellEnabled: Boolean,
     calibrationValue: Int,
-    viewModel: LiveRecordViewModel,
     dischargeDisplayPositive: Boolean,
     onClick: (() -> Unit)? = null
 ) {
-    val livePoints by viewModel.livePoints.collectAsState()
-    val lastStatus by viewModel.lastStatus.collectAsState()
-    val lastTemp by viewModel.lastTemp.collectAsState()
-    val isDischargingNow = lastStatus == BatteryStatus.Discharging
+    val record = uiState.record
+    val livePoints = uiState.livePoints
+    val lastTemp = uiState.lastTemp
+    val hasKnownStatus = uiState.displayStatus != BatteryStatus.Unknown
+    val isDischargingNow = uiState.displayStatus == BatteryStatus.Discharging
     val chargeStatusText = if (isDischargingNow) "放电" else "充电"
     val averageLabel = if (isDischargingNow) "平均功耗" else "平均功率"
     val currentLabel = if (isDischargingNow) "当前功耗" else "当前功率"
 
     Column(
         modifier = modifier
-            .clickable(enabled = record != null && onClick != null) { onClick?.invoke() }
+            .clickable(enabled = record != null && !uiState.isSwitching && onClick != null) { onClick?.invoke() }
             .fillMaxWidth()
             .padding(16.dp)
     ) {
         Text(
-            text = "当前记录" + if (record != null) " - $chargeStatusText" else "",
+            text = buildString {
+                append("当前记录")
+                if (hasKnownStatus) {
+                    append(" - ")
+                    append(chargeStatusText)
+                }
+            },
             style = MaterialTheme.typography.titleMedium
         )
+
+        if (uiState.isSwitching) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "等待新分段生成有效样本",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         if (record != null) {
             Spacer(Modifier.height(12.dp))
@@ -123,7 +135,7 @@ fun CurrentRecordCard(
                 }
 
                 LivePowerChart(
-                    status = lastStatus,
+                    status = uiState.displayStatus,
                     points = livePoints,
                     dualCellEnabled = dualCellEnabled,
                     calibrationValue = calibrationValue,
@@ -148,7 +160,7 @@ fun CurrentRecordCard(
                         currentLabel,
                         if (latestPowerRaw != null) {
                             val displayPowerRaw =
-                                if (lastStatus == BatteryStatus.Discharging) {
+                                if (uiState.displayStatus == BatteryStatus.Discharging) {
                                     val absPower = abs(latestPowerRaw.toDouble())
                                     if (dischargeDisplayPositive) -absPower else absPower
                                 } else {
@@ -165,7 +177,7 @@ fun CurrentRecordCard(
                     )
                 }
             }
-        } else {
+        } else if (!uiState.isSwitching) {
             Spacer(Modifier.height(12.dp))
             Text(
                 text = "暂无记录",

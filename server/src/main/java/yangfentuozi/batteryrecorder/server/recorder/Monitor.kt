@@ -102,7 +102,7 @@ class Monitor(
                         }
                         isInteractive = latestIsInteractive
                     }
-                    writer.write(
+                    val writeResult = writer.write(
                         LineRecord(
                             timestamp,
                             power,
@@ -117,15 +117,26 @@ class Monitor(
                     )
 
                     callbackHandler.post {
-                        // 回调 app
+                        // 回调 app：先同步当前记录文件切换，再下发已进入当前记录的实时样本。
                         val n: Int = callbacks.beginBroadcast()
                         for (i in 0..<n) {
                             try {
-                                callbacks.getBroadcastItem(i)
-                                    .onRecord(timestamp, power, status, temp)
+                                val callback = callbacks.getBroadcastItem(i)
+                                when (writeResult) {
+                                    is PowerRecordWriter.WriteResult.Changed -> {
+                                        callback.onChangedCurrRecordsFile(writeResult.recordsFile)
+                                        callback.onRecord(timestamp, power, status, temp)
+                                    }
+
+                                    PowerRecordWriter.WriteResult.Accepted -> {
+                                        callback.onRecord(timestamp, power, status, temp)
+                                    }
+
+                                    PowerRecordWriter.WriteResult.Rejected -> Unit
+                                }
                             } catch (e: RemoteException) {
                                 LoggerX.e<Monitor>(
-                                    "@callbackHandlerPost: onRecord 回调失败",
+                                    "@callbackHandlerPost: 记录回调失败",
                                     tr = e
                                 )
                             }
@@ -182,22 +193,7 @@ class Monitor(
         }
         isInteractive = iPowerManager.isInteractive
         LoggerX.d<Monitor>("start: initial isInteractive=$isInteractive")
-
         thread.start()
-        writer.onChangedCurrRecordsFile = {
-            callbackHandler.post {
-                // 回调 app
-                val n: Int = callbacks.beginBroadcast()
-                for (i in 0..<n) {
-                    try {
-                        callbacks.getBroadcastItem(i).onChangedCurrRecordsFile()
-                    } catch (e: RemoteException) {
-                        LoggerX.e<Monitor>("@onChangedCurrRecordsFile: 回调失败", tr = e)
-                    }
-                }
-                callbacks.finishBroadcast()
-            }
-        }
     }
 
     private fun registerDisplayEventCallback() {
@@ -239,7 +235,6 @@ class Monitor(
     }
 
     fun stop() {
-        writer.onChangedCurrRecordsFile = null
         stopped = true
         notifyLock()
         try {
