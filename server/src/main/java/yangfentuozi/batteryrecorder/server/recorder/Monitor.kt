@@ -88,15 +88,20 @@ class Monitor(
     private var thread = Thread({
         synchronized(lock) {
             while (!stopped) {
-                if (!waitUntilSamplingAllowedLocked()) {
-                    continue
-                }
                 try {
                     val timestamp = System.currentTimeMillis()
                     val sample = sampler.sample()
                     val power = sample.voltage * sample.current
                     val status = sample.status
                     val temp = sample.temp
+                    if (alwaysPollingScreenStatusEnabled) {
+                        val oldIsInteractive = isInteractive
+                        val latestIsInteractive = iPowerManager.isInteractive
+                        if (oldIsInteractive != latestIsInteractive) {
+                            LoggerX.d<Monitor>("@thread: 亮屏状态变化, $oldIsInteractive -> $latestIsInteractive")
+                        }
+                        isInteractive = latestIsInteractive
+                    }
                     val writeResult = writer.write(
                         LineRecord(
                             timestamp,
@@ -136,56 +141,30 @@ class Monitor(
                     LoggerX.e<Monitor>("@thread: 读取功耗数据失败", tr = e)
                 }
 
-                lock.wait(recordIntervalMs)
+                if (isInteractive || screenOffRecord) {
+                    if (paused) {
+                        LoggerX.d<Monitor>("@thread: 恢复采样, isInteractive=$isInteractive screenOffRecord=$screenOffRecord")
+                    }
+                    paused = false
+                    lock.wait(recordIntervalMs)
+                } else {
+                    paused = true
+                    if (alwaysPollingScreenStatusEnabled) {
+                        LoggerX.d<Monitor>("@thread: 暂停采样, 等待轮询亮屏")
+
+                        while (!stopped && !screenOffRecord && !isInteractive && alwaysPollingScreenStatusEnabled) {
+                            lock.wait(recordIntervalMs)
+                            isInteractive = iPowerManager.isInteractive
+                        }
+                    } else {
+                        LoggerX.d<Monitor>("@thread: 暂停采样, 等待亮屏事件")
+                        lock.wait()
+                    }
+                }
             }
         }
         Thread.currentThread().interrupt()
     }, "MonitorThread")
-
-    /**
-     * 在真正执行一次采样前，等待到当前状态允许采样。
-     *
-     * 回调模式直接使用 DisplayCallback 维护的内存态判断；
-     * 轮询模式仅在进入判定和等待循环时刷新一次亮屏状态，避免为每次写文件额外增加系统调用。
-     *
-     * @return `true` 表示当前允许继续采样；`false` 表示线程已停止，本轮应直接结束。
-     */
-    private fun waitUntilSamplingAllowedLocked(): Boolean {
-        while (!stopped) {
-            // 在轮询模式下刷新亮屏状态；回调模式保持最近一次 DisplayCallback 写入的状态。
-            if (alwaysPollingScreenStatusEnabled) {
-                val oldIsInteractive = isInteractive
-                val latestIsInteractive = iPowerManager.isInteractive
-                if (oldIsInteractive != latestIsInteractive) {
-                    LoggerX.d<Monitor>("@thread: 亮屏状态变化, $oldIsInteractive -> $latestIsInteractive")
-                }
-                isInteractive = latestIsInteractive
-            }
-
-            if (isInteractive || screenOffRecord) {
-                if (paused) {
-                    LoggerX.d<Monitor>("@thread: 恢复采样, isInteractive=$isInteractive screenOffRecord=$screenOffRecord")
-                }
-                paused = false
-                return true
-            }
-
-            if (!paused) {
-                paused = true
-                if (alwaysPollingScreenStatusEnabled) {
-                    LoggerX.d<Monitor>("@thread: 暂停采样, 等待轮询亮屏")
-                } else {
-                    LoggerX.d<Monitor>("@thread: 暂停采样, 等待亮屏事件")
-                }
-            }
-            if (alwaysPollingScreenStatusEnabled) {
-                lock.wait(recordIntervalMs)
-            } else {
-                lock.wait()
-            }
-        }
-        return false
-    }
 
     fun start() {
         LoggerX.d<Monitor>(
