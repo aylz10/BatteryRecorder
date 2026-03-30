@@ -49,7 +49,7 @@ fun AdbGuideDialog(onDismiss: () -> Unit) {
                 command = "adb shell \"$shellCommand\""
             ),
             CommandItem(
-                title = "纯 Shell 场景：已进入设备 shell 环境（后台启动）",
+                title = "纯 Shell 场景：已进入设备 shell 环境",
                 command = shellCommand
             )
         )
