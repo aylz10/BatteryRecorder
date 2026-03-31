@@ -6,5 +6,6 @@ data class ChartPoint(
     val packageName: String?,
     val capacity: Int,
     val isDisplayOn: Boolean,
-    val temp: Int
+    val temp: Int,
+    val voltage: Long,
 )

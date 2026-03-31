@@ -92,6 +92,7 @@ private val SCREEN_OFF_COLOR = Color(0xFFD32F2F)
 private val LINE_STROKE_WIDTH = 1.3.dp
 private const val APP_ICON_ALPHA = 0.55f
 private const val TEMP_EXPAND_STEP_TENTHS = 100.0    // 10℃
+private const val VOLTAGE_EXPAND_STEP_UV = 100_000.0 // 0.1V
 // 横屏全屏下记录详情通常会查看长时间段数据，双指平移稍微提速以减少来回拖动次数。
 private const val FULLSCREEN_TWO_FINGER_PAN_SPEED_MULTIPLIER = 2.0f
 
@@ -115,6 +116,7 @@ data class RecordChartCurveVisibility(
     val powerCurveMode: PowerCurveMode,
     val showCapacity: Boolean,
     val showTemp: Boolean,
+    val showVoltage: Boolean,
 )
 
 /**
@@ -131,6 +133,8 @@ private class ChartCoordinates(
     val maxPower: Double,
     val minTemp: Double,
     val maxTemp: Double,
+    val minVoltage: Double,
+    val maxVoltage: Double,
     private val contentWidth: Float,
     private val contentOffsetPx: Float,
 ) {
@@ -191,6 +195,12 @@ private class ChartCoordinates(
         return paddingTop + (1f - normalized) * chartHeight * 0.9f
     }
 
+    fun voltageToY(voltage: Double): Float {
+        val voltageRange = max(1.0, maxVoltage - minVoltage)
+        val normalized = ((voltage - minVoltage) / voltageRange).toFloat()
+        return paddingTop + (1f - normalized) * chartHeight * 0.9f
+    }
+
     /**
      * 根据 X 坐标查找最近的数据点
      */
@@ -209,6 +219,7 @@ private data class FullscreenStaticChartLayout(
     val powerPath: Path?,
     val capacityPath: Path?,
     val tempPath: Path?,
+    val voltagePath: Path?,
     val appIconPlacements: List<AppIconPlacement>,
 )
 
@@ -217,10 +228,12 @@ private data class NormalStaticChartLayerLayout(
     val powerPath: Path?,
     val capacityPath: Path?,
     val tempPath: Path?,
+    val voltagePath: Path?,
     val appIconPlacements: List<AppIconPlacement>,
     val screenStatePaths: ScreenStatePaths?,
     val capacityMarkerLayouts: List<TextPointMarkerLayout>,
     val tempMarkerLayouts: List<TextPointMarkerLayout>,
+    val voltageMarkerLayouts: List<TextPointMarkerLayout>,
     val peakAnnotationLayout: PeakAnnotationLayout?,
 )
 
@@ -285,6 +298,7 @@ private data class PreparedChartState(
     val selectablePoints: List<RecordDetailChartPoint>,
     val capacityMarkers: List<CapacityMarker>,
     val tempMarkerPoints: List<RecordDetailChartPoint>,
+    val voltageMarkerPoints: List<RecordDetailChartPoint>,
     val powerAxisConfig: FixedPowerAxisConfig,
     val hasVisiblePowerCurve: Boolean,
     val isNegativeMode: Boolean,
@@ -292,6 +306,8 @@ private data class PreparedChartState(
     val maxPower: Double,
     val minTemp: Double,
     val maxTemp: Double,
+    val minVoltage: Double,
+    val maxVoltage: Double,
     val peakDisplay: PeakPowerDisplay?,
     val paddingRightPx: Float,
     val chartWidthPx: Float,
@@ -320,6 +336,7 @@ fun PowerCapacityChart(
     onTogglePowerVisibility: () -> Unit,
     onToggleCapacityVisibility: () -> Unit,
     onToggleTempVisibility: () -> Unit,
+    onToggleVoltageVisibility: () -> Unit,
     showAppIcons: Boolean,
     onToggleAppIconsVisibility: () -> Unit,
     useFivePercentTimeGrid: Boolean,
@@ -330,6 +347,7 @@ fun PowerCapacityChart(
     val powerColor = MaterialTheme.colorScheme.primary
     val capacityColor = CAPACITY_COLOR
     val tempColor = TEMP_COLOR
+    val voltageColor = VOLTAGE_COLOR
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val axisLabelColor = MaterialTheme.colorScheme.onSurface
     val strokeWidth = LINE_STROKE_WIDTH
@@ -452,6 +470,7 @@ fun PowerCapacityChart(
     val activePowerPoints = preparedState.activePowerPoints
     val capacityMarkers = preparedState.capacityMarkers
     val tempMarkerPoints = preparedState.tempMarkerPoints
+    val voltageMarkerPoints = preparedState.voltageMarkerPoints
     val powerAxisConfig = preparedState.powerAxisConfig
     val hasVisiblePowerCurve = preparedState.hasVisiblePowerCurve
     val isNegativeMode = preparedState.isNegativeMode
@@ -459,6 +478,8 @@ fun PowerCapacityChart(
     val maxPower = preparedState.maxPower
     val minTemp = preparedState.minTemp
     val maxTemp = preparedState.maxTemp
+    val minVoltage = preparedState.minVoltage
+    val maxVoltage = preparedState.maxVoltage
     val peakDisplay = preparedState.peakDisplay
     val chartWidthPx = preparedState.chartWidthPx
     val paddingRightPx = preparedState.paddingRightPx
@@ -546,6 +567,7 @@ fun PowerCapacityChart(
         powerColor,
         capacityColor,
         tempColor,
+        voltageColor,
         screenOnColor,
         screenOffColor,
         peakLineColor,
@@ -599,9 +621,21 @@ fun PowerCapacityChart(
                 right = coords.paddingLeft + coords.chartWidth,
                 bottom = coords.paddingTop + coords.chartHeight
             ) {
-                // 曲线顺序固定为温度 -> 功率 -> 电量。
+                // 曲线顺序固定为电压 -> 温度 -> 功率 -> 电量。
+                // 电压与温度、电量都属于辅助信息，电压优先级最低，尽量不压住主要功率走势；
                 // 温度与电量属于辅助信息，让功率线保持更靠上的视觉优先级；
                 // 电量放在最后，避免较亮颜色被另外两条曲线完全覆盖。
+                layout.voltagePath?.let { path ->
+                    drawPath(
+                        path = path,
+                        color = voltageColor,
+                        style = Stroke(
+                            width = strokeWidth.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
                 layout.tempPath?.let { path ->
                     drawPath(
                         path = path,
@@ -639,6 +673,13 @@ fun PowerCapacityChart(
                     // 单点数据无法形成 path，这里补绘圆点，避免“有数据但图上什么都没有”。
                     val point = activePowerPoints.first()
                     val pointX = coords.timeToX(point.timestamp)
+                    if (curveVisibility.showVoltage) {
+                        drawCircle(
+                            voltageColor,
+                            radius = 2.8.dp.toPx(),
+                            center = Offset(pointX, coords.voltageToY(point.voltage.toDouble()))
+                        )
+                    }
                     if (curveVisibility.showTemp) {
                         drawCircle(
                             tempColor,
@@ -670,7 +711,7 @@ fun PowerCapacityChart(
             }
             // 峰值横线和标签故意放在曲线之后、标记之前：
             // 1. 它需要盖住网格线，保持“峰值基准线”清晰；
-            // 2. 又不能压住电量/温度文字标记，否则会让标签相互争抢可读性。
+            // 2. 又不能压住电量/温度/电压文字标记，否则会让标签相互争抢可读性。
             layout.peakAnnotationLayout?.let { peakLayout ->
                 drawPeakAnnotation(peakLayout, coords, peakLineColor)
             }
@@ -694,6 +735,16 @@ fun PowerCapacityChart(
                     bottom = coords.paddingTop + coords.chartHeight
                 ) {
                     drawTextPointMarkerLayouts(layout.tempMarkerLayouts, tempColor)
+                }
+            }
+            if (layout.voltageMarkerLayouts.isNotEmpty()) {
+                clipRect(
+                    left = coords.paddingLeft,
+                    top = coords.paddingTop,
+                    right = coords.paddingLeft + coords.chartWidth,
+                    bottom = coords.paddingTop + coords.chartHeight
+                ) {
+                    drawTextPointMarkerLayouts(layout.voltageMarkerLayouts, voltageColor)
                 }
             }
             layout.screenStatePaths?.let { screenPaths ->
@@ -743,11 +794,11 @@ fun PowerCapacityChart(
         SelectedPointInfo(
             selected = selectedPointState.value,
             recordStartTime = recordStartTime,
-            powerCurveMode = curveVisibility.powerCurveMode,
-            isFullscreen = isFullscreen,
-            onToggleFullscreen = onToggleFullscreen,
-            startPadding = selectedPointInfoPadding
-        )
+                    powerCurveMode = curveVisibility.powerCurveMode,
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = onToggleFullscreen,
+                    startPadding = selectedPointInfoPadding
+                )
 
         Spacer(modifier = Modifier.height(13.dp))
 
@@ -826,6 +877,8 @@ fun PowerCapacityChart(
                                 maxPower = 0.0,
                                 minTemp = 0.0,
                                 maxTemp = 0.0,
+                                minVoltage = 0.0,
+                                maxVoltage = 0.0,
                                 contentWidth = fullscreenContentWidthPx,
                                 contentOffsetPx = fullscreenContentOffsetPx
                             )
@@ -854,6 +907,8 @@ fun PowerCapacityChart(
                                 maxPower = 0.0,
                                 minTemp = 0.0,
                                 maxTemp = 0.0,
+                                minVoltage = 0.0,
+                                maxVoltage = 0.0,
                                 contentWidth = fullscreenContentWidthPx,
                                 contentOffsetPx = fullscreenContentOffsetPx
                             )
@@ -884,6 +939,8 @@ fun PowerCapacityChart(
                         maxPower,
                         minTemp,
                         maxTemp,
+                        minVoltage,
+                        maxVoltage,
                         contentWidth = if (isStaticFullscreen) fullscreenContentWidthPx else chartWidth,
                         contentOffsetPx = if (isStaticFullscreen) fullscreenContentOffsetPx else 0f
                     )
@@ -915,6 +972,13 @@ fun PowerCapacityChart(
                         fullscreenStaticLayout?.tempPath
                     } else if (curveVisibility.showTemp) {
                         buildTempPath(renderFilteredPoints, coords) { it.temp.toDouble() }
+                    } else {
+                        null
+                    }
+                    val voltagePath = if (isStaticFullscreen) {
+                        fullscreenStaticLayout?.voltagePath
+                    } else if (curveVisibility.showVoltage) {
+                        buildVoltagePath(renderFilteredPoints, coords) { it.voltage.toDouble() }
                     } else {
                         null
                     }
@@ -958,6 +1022,17 @@ fun PowerCapacityChart(
                         // 只有真正依赖“内容坐标”的元素才跟随平移：
                         // 曲线、标记、图标会移动；坐标轴和刻度文本仍留在视口坐标系。
                         translate(left = contentOffset) {
+                            voltagePath?.let { path ->
+                                drawPath(
+                                    path = path,
+                                    color = voltageColor,
+                                    style = Stroke(
+                                        width = strokeWidth.toPx(),
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    )
+                                )
+                            }
                             tempPath?.let { path ->
                                 drawPath(
                                     path = path,
@@ -995,6 +1070,16 @@ fun PowerCapacityChart(
                                 // 单点数据无法形成 path，这里补绘圆点，避免“有数据但图上什么都没有”。
                                 val point = activePowerPoints.first()
                                 val pointX = staticCoords.timeToX(point.timestamp)
+                                if (curveVisibility.showVoltage) {
+                                    drawCircle(
+                                        voltageColor,
+                                        radius = 2.8.dp.toPx(),
+                                        center = Offset(
+                                            pointX,
+                                            staticCoords.voltageToY(point.voltage.toDouble())
+                                        )
+                                    )
+                                }
                                 if (curveVisibility.showTemp) {
                                     drawCircle(
                                         tempColor,
@@ -1096,6 +1181,26 @@ fun PowerCapacityChart(
                             }
                         }
                     }
+                    if (curveVisibility.showVoltage) {
+                        // 电压极值和温度一样依赖当前曲线几何位置，因此需要跟随内容层一起平移。
+                        val voltageCoords = if (isStaticFullscreen) staticCoords else coords
+                        val voltageOffset =
+                            if (isStaticFullscreen) -fullscreenContentOffsetPx else 0f
+                        clipRect(
+                            left = paddingLeft,
+                            top = paddingTop,
+                            right = paddingLeft + chartWidth,
+                            bottom = paddingTop + chartHeight
+                        ) {
+                            translate(left = voltageOffset) {
+                                drawVoltageExtremeMarkers(
+                                    voltageMarkerPoints,
+                                    voltageCoords,
+                                    voltageColor
+                                )
+                            }
+                        }
+                    }
 
                     if (renderRawPoints.isNotEmpty()) {
                         // 屏幕状态线保留在底部区域，但仅允许在图表横向范围内绘制
@@ -1159,6 +1264,15 @@ fun PowerCapacityChart(
                                         tempColor,
                                         radius = 2.8.dp.toPx(),
                                         center = Offset(selectedX, tempY)
+                                    )
+                                }
+                                if (curveVisibility.showVoltage) {
+                                    val voltageY =
+                                        coords.voltageToY(selectedPoint.voltage.toDouble())
+                                    drawCircle(
+                                        voltageColor,
+                                        radius = 2.8.dp.toPx(),
+                                        center = Offset(selectedX, voltageY)
                                     )
                                 }
                             }
@@ -1230,6 +1344,8 @@ fun PowerCapacityChart(
                                     0.0,
                                     0.0,
                                     0.0,
+                                    0.0,
+                                    0.0,
                                     contentWidth = chartWidth,
                                     contentOffsetPx = 0f
                                 )
@@ -1257,6 +1373,8 @@ fun PowerCapacityChart(
                                     0.0,
                                     0.0,
                                     0.0,
+                                    0.0,
+                                    0.0,
                                     contentWidth = chartWidth,
                                     contentOffsetPx = 0f
                                 )
@@ -1278,6 +1396,7 @@ fun PowerCapacityChart(
                             powerColor = powerColor,
                             capacityColor = capacityColor,
                             tempColor = tempColor,
+                            voltageColor = voltageColor,
                             curveVisibility = curveVisibility,
                             hasVisiblePowerCurve = hasVisiblePowerCurve,
                             powerValueSelector = powerValueSelector
@@ -1310,6 +1429,12 @@ fun PowerCapacityChart(
                 color = tempColor,
                 enabled = curveVisibility.showTemp,
                 onClick = onToggleTempVisibility
+            )
+            LegendItem(
+                label = "电压",
+                color = voltageColor,
+                enabled = curveVisibility.showVoltage,
+                onClick = onToggleVoltageVisibility
             )
             LegendItem(
                 label = "应用",
@@ -1353,7 +1478,15 @@ private fun SelectedPointInfo(
                     selected.temp / 10.0
                 )
             }"
-        "$timeText · $powerText · $capacityText$tempText"
+        val voltageText =
+            if (selected.voltage == 0L) "" else " · ${
+                String.format(
+                    LocalLocale.current.platformLocale,
+                    "%.2f V",
+                    selected.voltage / 1_000_000.0
+                )
+            }"
+        "$timeText · $powerText · $capacityText$tempText$voltageText"
     }
     Row(
         modifier = Modifier
@@ -1533,6 +1666,7 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             .coerceIn(minPower, maxPower)
     }
     val (minTemp, maxTemp) = computeTempAxisRange(renderFilteredPoints)
+    val (minVoltage, maxVoltage) = computeVoltageAxisRange(renderFilteredPoints)
     val capacityMarkerPoints = if (isStaticFullscreen) filteredPoints else renderFilteredPoints
     val capacityMarkers = if (request.curveVisibility.showCapacity) {
         computeCapacityMarkers(capacityMarkerPoints)
@@ -1540,6 +1674,7 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
         emptyList()
     }
     val tempMarkerPoints = if (isStaticFullscreen) filteredPoints else renderFilteredPoints
+    val voltageMarkerPoints = if (isStaticFullscreen) filteredPoints else renderFilteredPoints
     val peakDisplay = if (!hasVisiblePowerCurve) {
         null
     } else {
@@ -1624,6 +1759,8 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             maxPower = maxPower,
             minTemp = minTemp,
             maxTemp = maxTemp,
+            minVoltage = minVoltage,
+            maxVoltage = maxVoltage,
             contentWidth = chartWidthPx,
             contentOffsetPx = 0f
         )
@@ -1646,6 +1783,11 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             },
             tempPath = if (request.curveVisibility.showTemp) {
                 buildTempPath(renderFilteredPoints, coords) { it.temp.toDouble() }
+            } else {
+                null
+            },
+            voltagePath = if (request.curveVisibility.showVoltage) {
+                buildVoltagePath(renderFilteredPoints, coords) { it.voltage.toDouble() }
             } else {
                 null
             },
@@ -1675,6 +1817,11 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             } else {
                 emptyList()
             },
+            voltageMarkerLayouts = if (request.curveVisibility.showVoltage) {
+                buildVoltageMarkerLayouts(voltageMarkerPoints, coords, request.density)
+            } else {
+                emptyList()
+            },
             peakAnnotationLayout = peakDisplay?.let { peak ->
                 buildPeakAnnotationLayout(
                     peakDisplay = peak,
@@ -1701,6 +1848,8 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             maxPower = maxPower,
             minTemp = minTemp,
             maxTemp = maxTemp,
+            minVoltage = minVoltage,
+            maxVoltage = maxVoltage,
             contentWidth = fullscreenContentWidthPx,
             contentOffsetPx = 0f
         )
@@ -1729,6 +1878,11 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             },
             tempPath = if (request.curveVisibility.showTemp) {
                 buildTempPath(filteredPoints, baseCoords) { it.temp.toDouble() }
+            } else {
+                null
+            },
+            voltagePath = if (request.curveVisibility.showVoltage) {
+                buildVoltagePath(filteredPoints, baseCoords) { it.voltage.toDouble() }
             } else {
                 null
             },
@@ -1775,6 +1929,7 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             selectablePoints = selectablePoints,
             capacityMarkers = capacityMarkers,
             tempMarkerPoints = tempMarkerPoints,
+            voltageMarkerPoints = voltageMarkerPoints,
             powerAxisConfig = powerAxisConfig,
             hasVisiblePowerCurve = hasVisiblePowerCurve,
             isNegativeMode = isNegativeMode,
@@ -1782,6 +1937,8 @@ private fun prepareChartState(request: ChartPreparationRequest): ChartPreparatio
             maxPower = maxPower,
             minTemp = minTemp,
             maxTemp = maxTemp,
+            minVoltage = minVoltage,
+            maxVoltage = maxVoltage,
             peakDisplay = peakDisplay,
             paddingRightPx = paddingRightPx,
             chartWidthPx = chartWidthPx,
@@ -1968,6 +2125,17 @@ private fun buildTempPath(
     valueSelector: (RecordDetailChartPoint) -> Double
 ): Path {
     return buildLinearPath(points, coords) { point -> coords.tempToY(valueSelector(point)) }
+}
+
+/**
+ * 构建电压曲线路径（使用 voltageToY 映射，0.9 缩放）
+ */
+private fun buildVoltagePath(
+    points: List<RecordDetailChartPoint>,
+    coords: ChartCoordinates,
+    valueSelector: (RecordDetailChartPoint) -> Double
+): Path {
+    return buildLinearPath(points, coords) { point -> coords.voltageToY(valueSelector(point)) }
 }
 
 private fun buildLinearPath(
@@ -2287,6 +2455,53 @@ private fun buildTempMarkerLayouts(
 }
 
 /**
+ * 预构建电压极值标记的几何布局。
+ *
+ * @param points 当前图表点集合
+ * @param coords 图表坐标系
+ * @return 最高电压/最低电压标记布局；无有效电压时返回空集合
+ */
+private fun buildVoltageMarkerLayouts(
+    points: List<RecordDetailChartPoint>,
+    coords: ChartCoordinates,
+    density: Density,
+): List<TextPointMarkerLayout> {
+    val validPoints = points.filter { it.voltage > 0L }
+    if (validPoints.size < 2) return emptyList()
+    val maxPoint = validPoints.maxByOrNull { it.voltage } ?: return emptyList()
+    val minPoint = validPoints.minByOrNull { it.voltage } ?: return emptyList()
+    if (maxPoint.voltage == minPoint.voltage) return emptyList()
+
+    val textPaint = createTextPaint(0, 20f)
+    val padding = with(density) { 6.dp.toPx() }
+    val chartRight = coords.paddingLeft + coords.chartWidth
+
+    return listOf(maxPoint, minPoint).map { point ->
+        val x = coords.timeToX(point.timestamp)
+        val y = coords.voltageToY(point.voltage.toDouble())
+        val label = String.format(Locale.getDefault(), "%.2f V", point.voltage / 1_000_000.0)
+        val labelWidth = textPaint.measureText(label)
+        var textX = x + padding
+        if (textX + labelWidth > chartRight) textX = x - padding - labelWidth
+        if (textX < coords.paddingLeft) textX = coords.paddingLeft
+
+        val isMax = point === maxPoint
+        val textY = if (isMax) {
+            y - padding
+        } else {
+            y - textPaint.fontMetrics.ascent + padding
+        }
+
+        TextPointMarkerLayout(
+            center = Offset(x, y),
+            label = label,
+            labelX = textX,
+            labelBaselineY = textY
+        )
+    }
+}
+
+/**
  * 预构建屏幕状态线 Path，供普通模式静态层直接复用。
  *
  * @param points 原始时间序列点
@@ -2444,6 +2659,7 @@ private fun DrawScope.drawSelectedPointOverlay(
     powerColor: Color,
     capacityColor: Color,
     tempColor: Color,
+    voltageColor: Color,
     curveVisibility: RecordChartCurveVisibility,
     hasVisiblePowerCurve: Boolean,
     powerValueSelector: (RecordDetailChartPoint) -> Double
@@ -2488,6 +2704,14 @@ private fun DrawScope.drawSelectedPointOverlay(
                         tempColor,
                         radius = 2.8.dp.toPx(),
                         center = Offset(selectedX, tempY)
+                    )
+                }
+                if (curveVisibility.showVoltage) {
+                    val voltageY = coords.voltageToY(point.voltage.toDouble())
+                    drawCircle(
+                        voltageColor,
+                        radius = 2.8.dp.toPx(),
+                        center = Offset(selectedX, voltageY)
                     )
                 }
             }
@@ -2579,6 +2803,28 @@ private fun computeTempAxisRange(points: List<RecordDetailChartPoint>): Pair<Dou
         minTemp to (minTemp + TEMP_EXPAND_STEP_TENTHS)
     } else {
         minTemp to maxTemp
+    }
+}
+
+/** 电压轴范围：按数据自动扩展，0.1V 步进，无默认范围与硬限制。 */
+private fun computeVoltageAxisRange(points: List<RecordDetailChartPoint>): Pair<Double, Double> {
+    val validVoltages = points.asSequence()
+        .map { it.voltage.toDouble() }
+        .filter { it > 0.0 }
+        .toList()
+    if (validVoltages.isEmpty()) return 0.0 to VOLTAGE_EXPAND_STEP_UV
+
+    val observedMin = validVoltages.min()
+    val observedMax = validVoltages.max()
+    val minVoltage =
+        kotlin.math.floor(observedMin / VOLTAGE_EXPAND_STEP_UV) * VOLTAGE_EXPAND_STEP_UV
+    val maxVoltage =
+        kotlin.math.ceil(observedMax / VOLTAGE_EXPAND_STEP_UV) * VOLTAGE_EXPAND_STEP_UV
+
+    return if (maxVoltage - minVoltage < 1.0) {
+        minVoltage to (minVoltage + VOLTAGE_EXPAND_STEP_UV)
+    } else {
+        minVoltage to maxVoltage
     }
 }
 
@@ -2746,6 +2992,41 @@ private fun DrawScope.drawTempExtremeMarkers(
         drawCircle(tempColor, radius = 3.dp.toPx() * 0.65f, center = Offset(x, y))
 
         val label = String.format(Locale.getDefault(), "%.1f ℃", point.temp / 10.0)
+        val labelWidth = textPaint.measureText(label)
+        var textX = x + padding
+        if (textX + labelWidth > chartRight) textX = x - padding - labelWidth
+        if (textX < coords.paddingLeft) textX = coords.paddingLeft
+
+        val isMax = point === maxPoint
+        val textY = if (isMax) y - padding else y + textHeight + padding
+
+        drawContext.canvas.nativeCanvas.drawText(label, textX, textY, textPaint)
+    }
+}
+
+private fun DrawScope.drawVoltageExtremeMarkers(
+    points: List<RecordDetailChartPoint>,
+    coords: ChartCoordinates,
+    voltageColor: Color,
+) {
+    val validPoints = points.filter { it.voltage > 0L }
+    if (validPoints.size < 2) return
+    val maxPoint = validPoints.maxByOrNull { it.voltage } ?: return
+    val minPoint = validPoints.minByOrNull { it.voltage } ?: return
+    if (maxPoint.voltage == minPoint.voltage) return
+
+    val textPaint = createTextPaint(voltageColor.toArgb(), 20f)
+    val padding = 6.dp.toPx()
+    val textHeight = -textPaint.fontMetrics.ascent
+    val chartRight = coords.paddingLeft + coords.chartWidth
+
+    for (point in listOf(maxPoint, minPoint)) {
+        val x = coords.timeToX(point.timestamp)
+        val y = coords.voltageToY(point.voltage.toDouble())
+
+        drawCircle(voltageColor, radius = 3.dp.toPx() * 0.65f, center = Offset(x, y))
+
+        val label = String.format(Locale.getDefault(), "%.2f V", point.voltage / 1_000_000.0)
         val labelWidth = textPaint.measureText(label)
         var textX = x + padding
         if (textX + labelWidth > chartRight) textX = x - padding - labelWidth

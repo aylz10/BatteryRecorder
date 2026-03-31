@@ -669,7 +669,8 @@ class HistoryViewModel : ViewModel() {
                 packageName = point.packageName,
                 capacity = point.capacity,
                 isDisplayOn = point.isDisplayOn,
-                temp = point.temp
+                temp = point.temp,
+                voltage = point.voltage
             )
         }
         return convertedPoints
@@ -773,7 +774,8 @@ class HistoryViewModel : ViewModel() {
                 packageName = record.packageName,
                 capacity = record.capacity,
                 isDisplayOn = record.isDisplayOn == 1,
-                temp = record.temp
+                temp = record.temp,
+                voltage = record.voltage
             )
         }
     }

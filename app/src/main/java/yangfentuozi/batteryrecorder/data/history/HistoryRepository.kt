@@ -173,7 +173,8 @@ object HistoryRepository {
                 packageName = record.packageName,
                 capacity = record.capacity,
                 isDisplayOn = record.isDisplayOn == 1,
-                temp = record.temp
+                temp = record.temp,
+                voltage = record.voltage
             )
         }
     }

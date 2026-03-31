@@ -93,6 +93,7 @@ private const val RECORD_DETAIL_CHART_PREFS_NAME = "record_detail_chart"
 private const val KEY_POWER_CURVE_MODE = "power_curve_mode"
 private const val KEY_SHOW_CAPACITY_CURVE = "show_capacity_curve"
 private const val KEY_SHOW_TEMP_CURVE = "show_temp_curve"
+private const val KEY_SHOW_VOLTAGE_CURVE = "show_voltage_curve"
 private const val KEY_SHOW_APP_ICONS = "show_app_icons"
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,7 +120,7 @@ fun RecordDetailScreen(
     val chartPrefs = remember(context) {
         context.getSharedPreferences(RECORD_DETAIL_CHART_PREFS_NAME, Context.MODE_PRIVATE)
     }
-    // 这三项是“详情页图表本地展示偏好”，不属于业务配置，因此直接放在页面本地状态里持久化。
+    // 这些是“详情页图表本地展示偏好”，不属于业务配置，因此直接放在页面本地状态里持久化。
     var powerCurveMode by remember(chartPrefs) {
         mutableStateOf(loadPowerCurveMode(chartPrefs.getString(KEY_POWER_CURVE_MODE, null)))
     }
@@ -128,6 +129,9 @@ fun RecordDetailScreen(
     }
     var showTemp by remember(chartPrefs) {
         mutableStateOf(chartPrefs.getBoolean(KEY_SHOW_TEMP_CURVE, true))
+    }
+    var showVoltage by remember(chartPrefs) {
+        mutableStateOf(chartPrefs.getBoolean(KEY_SHOW_VOLTAGE_CURVE, true))
     }
     var showAppIcons by remember(chartPrefs) {
         mutableStateOf(chartPrefs.getBoolean(KEY_SHOW_APP_ICONS, true))
@@ -256,7 +260,8 @@ fun RecordDetailScreen(
         val curveVisibility = RecordChartCurveVisibility(
             powerCurveMode = powerCurveMode,
             showCapacity = showCapacity,
-            showTemp = showTemp
+            showTemp = showTemp,
+            showVoltage = showVoltage
         )
 
         // 只有全屏模式允许横向拖动浏览局部视口；
@@ -326,6 +331,11 @@ fun RecordDetailScreen(
                         val nextValue = !showTemp
                         chartPrefs.edit { putBoolean(KEY_SHOW_TEMP_CURVE, nextValue) }
                         showTemp = nextValue
+                    },
+                    onToggleVoltageVisibility = {
+                        val nextValue = !showVoltage
+                        chartPrefs.edit { putBoolean(KEY_SHOW_VOLTAGE_CURVE, nextValue) }
+                        showVoltage = nextValue
                     },
                     showAppIcons = showAppIcons,
                     onToggleAppIconsVisibility = {

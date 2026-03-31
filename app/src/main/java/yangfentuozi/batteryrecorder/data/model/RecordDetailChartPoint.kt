@@ -22,6 +22,7 @@ data class RecordDetailChartPoint(
     val capacity: Int,
     val isDisplayOn: Boolean,
     val temp: Int,
+    val voltage: Long,
 )
 
 /**
