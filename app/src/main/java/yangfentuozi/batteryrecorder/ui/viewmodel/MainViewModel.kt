@@ -32,10 +32,15 @@ import yangfentuozi.batteryrecorder.shared.data.RecordsFile
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import yangfentuozi.batteryrecorder.ui.model.CurrentRecordUiState
 import yangfentuozi.batteryrecorder.ui.model.LiveRecordSample
+import yangfentuozi.batteryrecorder.ui.viewmodel.dataclass.HomePredictionDisplay
+import yangfentuozi.batteryrecorder.ui.viewmodel.dataclass.PredictionConfidenceLevel
 
 private const val TAG = "MainViewModel"
 
 private const val MAX_LIVE_POINTS = 20
+private const val PREDICTION_DISPLAY_SCORE_OFFSET = 5
+private const val PREDICTION_CONFIDENCE_LOW_MAX = 44
+private const val PREDICTION_CONFIDENCE_MEDIUM_MAX = 74
 
 private enum class StatisticsRefreshMode {
     ClearAndReload,
@@ -86,6 +91,9 @@ class MainViewModel : ViewModel() {
     // 仅在成功拿到可解析的放电当前记录后更新；其他场景保留最近一次有效放电预测。
     private val _prediction = MutableStateFlow<PredictionResult?>(null)
     val prediction: StateFlow<PredictionResult?> = _prediction.asStateFlow()
+
+    private val _predictionDisplay = MutableStateFlow<HomePredictionDisplay?>(null)
+    val predictionDisplay: StateFlow<HomePredictionDisplay?> = _predictionDisplay.asStateFlow()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -455,6 +463,49 @@ class MainViewModel : ViewModel() {
         return "当前记录加载失败：${recordsFile.name}（$detail）"
     }
 
+    /**
+     * 把首页预测原始结果映射为卡片展示数据。
+     *
+     * @param prediction 首页预测算法返回的原始结果。
+     * @return 仅包含首页渲染所需字段的展示数据；当原始结果为空时返回空。
+     */
+    private fun buildPredictionDisplay(prediction: PredictionResult?): HomePredictionDisplay? {
+        if (prediction == null) {
+            return null
+        }
+        if (prediction.insufficientData) {
+            return HomePredictionDisplay(
+                insufficientReason = prediction.insufficientReason ?: "数据不足"
+            )
+        }
+
+        val adjustedScore =
+            (prediction.confidenceScore + PREDICTION_DISPLAY_SCORE_OFFSET).coerceIn(0, 100)
+        return HomePredictionDisplay(
+            confidenceLevel = mapPredictionConfidenceLevel(adjustedScore),
+            screenOffCurrentHours = prediction.screenOffCurrentHours,
+            screenOffFullHours = prediction.screenOffFullHours,
+            screenOnDailyCurrentHours = prediction.screenOnDailyCurrentHours,
+            screenOnDailyFullHours = prediction.screenOnDailyFullHours
+        )
+    }
+
+    /**
+     * 根据首页展示分映射置信度档位。
+     *
+     * @param adjustedScore 已完成偏移与截断的展示分。
+     * @return 首页卡片展示使用的置信度档位。
+     */
+    private fun mapPredictionConfidenceLevel(adjustedScore: Int): PredictionConfidenceLevel {
+        return when (adjustedScore) {
+            in 0..PREDICTION_CONFIDENCE_LOW_MAX -> PredictionConfidenceLevel.Low
+            in (PREDICTION_CONFIDENCE_LOW_MAX + 1)..PREDICTION_CONFIDENCE_MEDIUM_MAX ->
+                PredictionConfidenceLevel.Medium
+
+            else -> PredictionConfidenceLevel.High
+        }
+    }
+
     private fun startLoadStatistics(
         context: Context,
         request: StatisticsSettings,
@@ -612,6 +663,7 @@ class MainViewModel : ViewModel() {
                                 kEffectiveN = stats?.kEffectiveN ?: 0.0,
                                 upstreamInsufficientReason = stats?.insufficientReason
                             )
+                        _predictionDisplay.value = buildPredictionDisplay(_prediction.value)
                     }
                     _userMessage.value = currentRecordFailureMessage
 

@@ -91,7 +91,7 @@ fun HomeScreen(
 
     // 首页续航卡片与场景卡片共用同一批统计结果。
     val sceneStats by viewModel.sceneStats.collectAsState()
-    val prediction by viewModel.prediction.collectAsState()
+    val predictionDisplay by viewModel.predictionDisplay.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val logExportFileNameFormatter = remember {
@@ -313,7 +313,7 @@ fun HomeScreen(
                     if (isDischarging) {
                         item {
                             PredictionCard(
-                                prediction = prediction,
+                                predictionDisplay = predictionDisplay,
                                 onClick = onNavigateToPredictionDetail
                             )
                         }

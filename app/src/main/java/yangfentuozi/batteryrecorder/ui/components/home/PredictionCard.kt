@@ -1,7 +1,9 @@
 package yangfentuozi.batteryrecorder.ui.components.home
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -9,12 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.unit.dp
-import yangfentuozi.batteryrecorder.data.history.PredictionResult
 import yangfentuozi.batteryrecorder.data.history.SceneStats
 import yangfentuozi.batteryrecorder.ui.components.global.StatRow
+import yangfentuozi.batteryrecorder.ui.viewmodel.dataclass.HomePredictionDisplay
 import yangfentuozi.batteryrecorder.utils.computePowerW
 import yangfentuozi.batteryrecorder.utils.formatFullRemainingTime
 import yangfentuozi.batteryrecorder.utils.formatRemainingTime
@@ -33,7 +36,7 @@ private fun formatPredictionPair(
 
 @Composable
 fun PredictionCard(
-    prediction: PredictionResult?,
+    predictionDisplay: HomePredictionDisplay?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -44,20 +47,25 @@ fun PredictionCard(
             .clickable(onClick = onClick)
             .padding(16.dp)
     ) {
-        // 特判置信度 100 为服务未启动情况
-        val title =
-            if (prediction != null && !prediction.insufficientData && prediction.confidenceScore != 100)
-                "续航预测 - 置信评分 ${prediction.confidenceScore}"
-            else "续航预测"
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium
-        )
+        val confidenceLevel = predictionDisplay?.confidenceLevel
+
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "续航预测",
+                style = MaterialTheme.typography.titleMedium
+            )
+            StatusIndicator(confidenceLevel)
+        }
         Spacer(Modifier.height(12.dp))
 
-        if (prediction == null || prediction.insufficientData) {
+        if (confidenceLevel == null) {
             Text(
-                text = prediction?.insufficientReason ?: "数据不足",
+                text = predictionDisplay?.insufficientReason ?: "数据不足",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -65,16 +73,16 @@ fun PredictionCard(
             StatRow(
                 label = "息屏",
                 value = formatPredictionPair(
-                    currentHours = prediction.screenOffCurrentHours,
-                    fullHours = prediction.screenOffFullHours
+                    currentHours = predictionDisplay.screenOffCurrentHours,
+                    fullHours = predictionDisplay.screenOffFullHours
                 ),
                 modifier = Modifier.padding(vertical = 4.dp)
             )
             StatRow(
                 label = "亮屏日常",
                 value = formatPredictionPair(
-                    currentHours = prediction.screenOnDailyCurrentHours,
-                    fullHours = prediction.screenOnDailyFullHours
+                    currentHours = predictionDisplay.screenOnDailyCurrentHours,
+                    fullHours = predictionDisplay.screenOnDailyFullHours
                 ),
                 modifier = Modifier.padding(vertical = 4.dp)
             )
