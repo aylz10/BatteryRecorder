@@ -15,7 +15,7 @@ BatteryRecorder 是一个 Android 电池功率记录 App。
 - Server 进程以 root/shell 权限运行，低开销采集电池数据并写入记录文件
 - 采样优先走 JNI sysfs 读取；不可用时回退到 dumpsys/batteryproperties 方案
 - 历史数据支持图表查看、应用维度统计、场景维度统计、记录详情统计与续航预测
-- 应用启动阶段还负责首次文档引导与更新检查；首页同时提供 Root/ADB 启动入口与日志导出
+- 应用启动阶段还负责首次文档引导与更新检查；更新检查当前支持“稳定版 / 预发布”两种通道；首页同时提供 Root/ADB 启动入口与日志导出
 
 ## 构建约束
 
@@ -106,6 +106,8 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 - 首页的“续航预测卡片”和“场景统计卡片”都定义在 `ui/components/home/PredictionCard.kt`
 - 首页统计刷新参数统一来自 `SettingsViewModel.statisticsSettings`，服务端采样间隔单独来自 `SettingsViewModel.recordIntervalMs`
 - 首页支持 Root 启动卡片、ADB 引导、日志导出、关于弹窗、首次文档引导与启动更新检查
+- 启动更新检查由 `BatteryRecorderApp` 直接触发；稳定版通道走 GitHub `releases/latest`，预发布通道走 `releases` 列表并筛选 `prerelease=true`
+- 更新弹窗由 `ui/dialog/home/UpdateDialog.kt` 渲染，版本信息会附带当前通道标识
 
 ### UI 沉浸与 Insets 链路
 
@@ -387,6 +389,7 @@ shared/src/main/
 | 图标缓存                      | `app/.../utils/AppIconMemoryCache.kt`                                                              |
 | 功率换算/格式化                  | `app/.../utils/FormatUtil.kt`                                                                      |
 | 更新检查工具（对象名 `UpdateUtils`） | `app/.../utils/UpdateUtil.kt`                                                                      |
+| 更新通道展示映射                    | `app/.../ui/model/UpdateChannelDisplayName.kt`                                                    |
 | Server 进程入口               | `server/.../Main.kt`                                                                               |
 | Server Binder 实现          | `server/.../Server.kt`                                                                             |
 | 采样循环                      | `server/.../recorder/Monitor.kt`                                                                   |
@@ -420,6 +423,8 @@ shared/src/main/
 - 充电历史页底部筛选栏需要单独处理导航栏底部 inset，不能直接套用普通滚动页的底部 padding 逻辑
 - ROOT 启动统一经过 `RootServerStarter.start(context, source)`
 - 当前设置系统按 `AppSettings`、`StatisticsSettings`、`ServerSettings` 分层；`SharedSettings.kt` 负责三类设置的 SharedPreferences 读写，以及 `logLevel` 编解码
+- 更新检测通道属于 `AppSettings`，当前字段为 `AppSettings.updateChannel`，使用 `UpdateChannel` 枚举持久化
+- 设置页“常规”分组当前同时包含“启动时检测更新”开关与“版本类型”菜单项；“版本类型”右侧显示当前通道，点击后弹出 `DropdownMenu`
 - 当前预测设置已收敛到 `StatisticsSettings.predWeightedAlgorithmEnabled` 与 `StatisticsSettings.predWeightedAlgorithmAlphaMaxX100`
 - `SharedSettings.readStatisticsSettings(...)` 当前只读取新 key，不再兼容旧的 `pred_current_session_weight_enabled`
 - `ConfigUtil.kt` 只负责 root/shell 场景下的设置来源适配；root 直接解析 SharedPreferences XML，shell 通过 `ConfigProvider` 读取 `ServerSettings`
@@ -453,6 +458,7 @@ shared/src/main/
 - 日志内容保持结构化前缀，例如：
   - `[BOOT]`
   - `[启动]`
+  - `[更新]`
   - `[SYNC]`
   - `[记录详情]`
 
