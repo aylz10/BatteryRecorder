@@ -39,6 +39,13 @@ object LoggerX {
             logDir = if (value == null) null else File(value)
         }
 
+    // 只允许传入
+    var suffix: String?
+        get() = null
+        set(value) {
+            writer?.setSuffix(value ?: "")
+        }
+
     @Volatile
     var fixFileOwner: ((File) -> Unit)? = null
 
@@ -160,7 +167,8 @@ object LoggerX {
 
     private class LogWriter(private val logDir: File) {
 
-        private val fileNameRegex = Regex("""^(\d{4}-\d{2}-\d{2})(?:_(\d+))?\.log$""")
+        private var suffix = ""
+        private var fileNameRegex = Regex("""^(\d{4}-\d{2}-\d{2})(?:_(\d+))?\.log$""")
         private val dateFileFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         private val lineTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
         private val handler = Handlers.getHandler("LoggingThread")
@@ -254,7 +262,7 @@ object LoggerX {
         }
 
         private fun openWriter() {
-            val logFile = File(logDir, "$activeDate.log")
+            val logFile = File(logDir, "$activeDate$suffix.log")
             if (!logFile.exists() && !logFile.createNewFile()) throw IOException("logFile.createNewFile() failed: ${logFile.absolutePath}")
             if (logFile.isDirectory) throw IOException("logFile is a directory: ${logFile.absolutePath}")
             fixFileOwner?.invoke(logFile)
@@ -289,6 +297,11 @@ object LoggerX {
                     writer = null
                 }
             }
+        }
+
+        fun setSuffix(suffix: String) {
+            this.suffix = suffix
+            fileNameRegex = Regex("""^(\d{4}-\d{2}-\d{2})(?:_(\d+))?${Regex.escape(suffix)}\.log$""")
         }
     }
 }
