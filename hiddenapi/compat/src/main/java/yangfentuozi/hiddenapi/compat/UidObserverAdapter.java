@@ -4,8 +4,10 @@ import android.app.IUidObserver;
 import android.os.Parcel;
 import android.os.RemoteException;
 
+import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 
+@Keep
 public class UidObserverAdapter extends IUidObserver.Stub {
 
     public final void onUidGone(int uid) throws RemoteException {

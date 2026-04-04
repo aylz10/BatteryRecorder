@@ -1,5 +1,6 @@
 package yangfentuozi.batteryrecorder.server
 
+import androidx.annotation.Keep
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import yangfentuozi.hiddenapi.compat.ActivityManagerCompat
 import yangfentuozi.hiddenapi.compat.ActivityManagerCompat.UID_OBSERVER_ACTIVE
@@ -9,6 +10,7 @@ import yangfentuozi.hiddenapi.compat.ActivityManagerCompat.UID_OBSERVER_IDLE
 import yangfentuozi.hiddenapi.compat.ProcessObserverAdapter
 import yangfentuozi.hiddenapi.compat.UidObserverAdapter
 
+@Keep
 class BinderSender(private val sendBinder: () -> Unit) {
     private val tag = "BinderSender"
 

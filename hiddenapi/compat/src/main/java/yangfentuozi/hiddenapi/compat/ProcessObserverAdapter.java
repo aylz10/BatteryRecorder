@@ -3,6 +3,9 @@ package yangfentuozi.hiddenapi.compat;
 import android.app.IProcessObserver;
 import android.os.RemoteException;
 
+import androidx.annotation.Keep;
+
+@Keep
 public class ProcessObserverAdapter extends IProcessObserver.Stub {
 
     public void onForegroundActivitiesChanged(int pid, int uid, boolean foregroundActivities) throws RemoteException {
