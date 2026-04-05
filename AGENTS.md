@@ -13,7 +13,9 @@ BatteryRecorder 是一个 Android 电池功率记录 App。
 
 - App 进程负责 UI、配置、历史数据展示、日志导出、续航预测与 IPC 客户端
 - Server 进程以 root/shell 权限运行，低开销采集电池数据并写入记录文件
+- Root/ADB 启动当前统一通过原生 `libstarter.so` 拉起 `app_process`；root 启动会显式传入 APK 路径，ADB/shell 启动可回退到 `pm path` 解析 APK 路径
 - 采样优先走 JNI sysfs 读取；不可用时回退到 dumpsys/batteryproperties 方案
+- root 模式下主 `Server` 会额外派生独立的 `NotificationServer` 子进程，并通过本地 socket 转发实时通知
 - 历史数据支持图表查看、应用维度统计、场景维度统计、记录详情统计与续航预测
 - 应用启动阶段还负责首次文档引导与更新检查；更新检查当前支持“稳定版 / 预发布”两种通道；首页同时提供 Root/ADB 启动入口与日志导出
 
@@ -61,7 +63,7 @@ BatteryRecorder 是一个 Android 电池功率记录 App。
 
 ## 核心架构
 
-### 双进程 IPC 模型
+### App/Server IPC 模型（root 模式附带通知子进程）
 
 ```text
 App 进程 (UI)  <->  AIDL Binder  <->  Server 进程 (root/shell)
@@ -69,12 +71,23 @@ App 进程 (UI)  <->  AIDL Binder  <->  Server 进程 (root/shell)
 
 - Server 不是 Android Service，而是独立进程内直接创建 `Server()` 并进入 `Looper.loop()`
 - 进程入口为 `server/.../Main.kt`
-- `Main.kt` 负责设置进程名与 `oom_score_adj`，随后启动 `Server`
+- `Main.kt` 会根据启动参数区分主 `Server` 与 `NotificationServer`，并负责设置进程名、`oom_score_adj` 与 cgroup
 - Server 启动后通过 `ActivityManagerCompat.contentProviderCall()` 将 Binder 推送给 App 的 `BinderProvider`
+- `BinderSender` 会注册 Process/Uid 观察者，在 App 进程重新活跃时持续重推 Binder，减少冷启动和被系统回收后的连接丢失
 - App 通过 `IService` AIDL 与 Server 通信，核心能力包括停止服务、注册监听、更新配置、同步数据
 - Server 读取配置时：
   - root 权限：直接读 App 的 SharedPreferences XML
   - shell 权限：通过 `ConfigProvider`
+
+### 启动与通知链路
+
+- 首页 Root 启动、开机 ROOT 自启动、ADB 引导当前都统一指向 `libstarter.so`
+- `RootServerStarter` 会构造 `libstarter.so --apk=<sourceDir>` 命令；ADB 引导文案默认展示直接执行 `libstarter.so` 的命令
+- `starter.cpp` 负责校验调用 UID、解析 APK 路径、设置 `CLASSPATH`，再用 `app_process` 拉起 `yangfentuozi.batteryrecorder.server.Main`
+- root 模式下，`Server` 初始化时会创建 `ChildServerBridge`，再派生 `NotificationServer`
+- `NotificationServer` 启动后会降权到 shell uid 2000，等待 `notification` / `activity` 服务可用，并用 `LocalServerSocket` 接收主 `Server` 发来的通知流
+- 主 `Server` 通过 `RemoteNotificationUtil` 写 socket；子进程通过 `LocalNotificationUtil` + `FakeContext` 真正下发系统通知
+- `LocalNotificationUtil` 当前会复用单个 `Notification.Builder` 降低高频通知更新开销；如果修改通知固定字段、图标、channel 或 builder 生命周期，必须同步检查这条复用链路是否仍成立
 
 ### 数据采样链路
 
@@ -103,8 +116,10 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 - `MainViewModel` 负责首页汇总统计、当前记录切段等待态与实时曲线缓冲
 - 首页当前记录链路已收敛到 `MainViewModel`，`HomeScreen` 不再局部创建 `LiveRecordViewModel`
 - `CurrentRecordCard` 直接消费 `MainViewModel.currentRecordUiState`
+- 首页当前记录卡片同时结合 `ACTION_BATTERY_CHANGED` 广播显示当前电量百分比与电压，不依赖记录文件回放推导这两个值
 - 首页的“续航预测卡片”和“场景统计卡片”都定义在 `ui/components/home/PredictionCard.kt`
 - 首页统计刷新参数统一来自 `SettingsViewModel.statisticsSettings`，服务端采样间隔单独来自 `SettingsViewModel.recordIntervalMs`
+- 首页在服务重连后只在前台生命周期内补注册 `IRecordListener` 并刷新统计，避免返回首页时先清空卡片再重载的竞态
 - 首页支持 Root 启动卡片、ADB 引导、日志导出、关于弹窗、首次文档引导与启动更新检查
 - 启动更新检查由 `BatteryRecorderApp` 直接触发；稳定版通道走 GitHub `releases/latest`，预发布通道走 `releases` 列表并取最新非 draft 发布，因此向下兼容稳定版
 - 更新弹窗由 `ui/dialog/home/UpdateDialog.kt` 渲染，版本信息会附带当前通道标识
@@ -303,20 +318,35 @@ app/src/main/java/yangfentuozi/batteryrecorder/
 server/src/main/
 ├── aidl/
 ├── java/yangfentuozi/batteryrecorder/server/
+│   ├── BinderSender.kt
+│   ├── Global.kt
 │   ├── Main.kt
 │   ├── Server.kt
+│   ├── fakecontext/
+│   │   ├── ExternalProviderResolver.kt
+│   │   └── FakeContext.kt
+│   ├── notification/
+│   │   ├── LocalNotificationUtil.kt
+│   │   ├── NotificationInfo.kt
+│   │   ├── NotificationUtil.kt
+│   │   ├── RemoteNotificationUtil.kt
+│   │   └── server/
+│   │       ├── ChildServerBridge.kt
+│   │       ├── NotificationServer.kt
+│   │       └── stream/
 │   ├── recorder/
-│   │   ├── Monitor.kt
-│   │   └── sampler/
-│   │       ├── Sampler.kt
-│   │       ├── SysfsSampler.kt
-│   │       └── DumpsysSampler.kt
+│   │   └── Monitor.kt
+│   ├── sampler/
+│   │   ├── Sampler.kt
+│   │   ├── SysfsSampler.kt
+│   │   └── DumpsysSampler.kt
 │   └── writer/
 │       └── PowerRecordWriter.kt
 └── jni/
     ├── CMakeLists.txt
     ├── dump_parser.cpp
-    └── power_reader.c
+    ├── power_reader.cpp
+    └── starter.cpp
 ```
 
 ### Shared 模块
@@ -353,6 +383,7 @@ shared/src/main/
 
 | 功能                        | 路径                                                                                                 |
 |---------------------------|----------------------------------------------------------------------------------------------------|
+| App 进程入口                  | `app/.../App.kt`                                                                                   |
 | App 入口 Composable         | `app/.../ui/BatteryRecorderApp.kt`                                                                 |
 | Activity Edge-to-Edge 入口  | `app/.../ui/BaseActivity.kt`                                                                       |
 | 页面级 Insets 公共方法           | `app/.../ui/EdgeToEdgeInsets.kt`                                                                   |
@@ -376,6 +407,7 @@ shared/src/main/
 | Binder 接收 Provider        | `app/.../ipc/BinderProvider.kt`                                                                    |
 | 配置 Provider               | `app/.../ipc/ConfigProvider.kt`                                                                    |
 | 开机自启动                     | `app/.../startup/BootCompletedReceiver.kt`, `RootServerStarter.kt`, `BootAutoStartNotification.kt` |
+| 原生启动器                     | `server/src/main/jni/starter.cpp`                                                                  |
 | 历史仓库                      | `app/.../data/history/HistoryRepository.kt`                                                        |
 | 单记录应用统计                   | `app/.../data/history/RecordAppStatsComputer.kt`                                                   |
 | 记录详情功耗统计                  | `app/.../data/history/RecordDetailPowerStatsComputer.kt`                                           |
@@ -392,12 +424,17 @@ shared/src/main/
 | 更新通道展示映射                    | `app/.../ui/model/UpdateChannelDisplayName.kt`                                                    |
 | Server 进程入口               | `server/.../Main.kt`                                                                               |
 | Server Binder 实现          | `server/.../Server.kt`                                                                             |
+| Binder 重推链路                | `server/.../BinderSender.kt`                                                                       |
+| 通知子进程桥接                    | `server/.../notification/server/ChildServerBridge.kt`                                              |
+| 通知子进程入口                    | `server/.../notification/server/NotificationServer.kt`                                             |
+| 本地通知下发                    | `server/.../notification/LocalNotificationUtil.kt`                                                 |
+| FakeContext                | `server/.../fakecontext/FakeContext.kt`                                                            |
 | 采样循环                      | `server/.../recorder/Monitor.kt`                                                                   |
-| 采样抽象                      | `server/.../recorder/sampler/Sampler.kt`                                                           |
-| sysfs/JNI 采样              | `server/.../recorder/sampler/SysfsSampler.kt`                                                      |
-| dumpsys 回退采样              | `server/.../recorder/sampler/DumpsysSampler.kt`                                                    |
+| 采样抽象                      | `server/.../sampler/Sampler.kt`                                                                    |
+| sysfs/JNI 采样              | `server/.../sampler/SysfsSampler.kt`                                                               |
+| dumpsys 回退采样              | `server/.../sampler/DumpsysSampler.kt`                                                             |
 | 写文件                       | `server/.../writer/PowerRecordWriter.kt`                                                           |
-| JNI 原生代码                  | `server/src/main/jni/power_reader.c`, `server/src/main/jni/dump_parser.cpp`                        |
+| JNI 原生代码                  | `server/src/main/jni/power_reader.cpp`, `server/src/main/jni/dump_parser.cpp`, `server/src/main/jni/starter.cpp` |
 | AIDL 接口                   | `server/src/main/aidl/`                                                                            |
 | 共享配置                      | `shared/.../config/`                                                                               |
 | 共享数据模型与解析                 | `shared/.../data/`                                                                                 |
@@ -411,9 +448,10 @@ shared/src/main/
 - `SettingsViewModel.init(context)` 在应用入口阶段完成 SharedPreferences 初始化
 - `HistoryViewModel` 在 `BatteryRecorderNavHost` 创建共享实例，不是“每个历史页面各建一个”
 - 首页当前记录卡片、实时曲线与等待态统一由 `MainViewModel.currentRecordUiState` 提供
+- `HomeScreen` 会同时监听 `ACTION_BATTERY_CHANGED` 与 `IRecordListener`；前者提供当前电量/电压，后者提供实时功率与当前记录切段事件
 - `PredictionDetailViewModel` 在 `PredictionDetailScreen` 局部创建
 - `PredictionDetailViewModel.load()` 会先执行同步，再读取最近放电记录并聚合应用维度预测
-- 当前实现中，`HomeScreen` 会直接访问 `Service.service` 注册/反注册 `IRecordListener`；修改该链路时必须同时检查生命周期与监听释放
+- 当前实现中，`HomeScreen` 会直接访问 `Service.service` 注册 `IRecordListener`；修改该链路时必须同时检查生命周期、重连补注册时机与监听释放
 - `HistoryRepository` 负责文件 I/O、解析、缓存和统计，不承载 Compose 展示逻辑
 - 详情页图表状态统一收敛到 `RecordDetailChartUiState`
 - 图表本地展示偏好不写入业务配置
@@ -421,6 +459,10 @@ shared/src/main/
 - 页面级沉浸规则是：`Scaffold` 只吃顶部/水平安全区，底部手势区由内容层自行处理
 - 页面外层 margin 当前统一按 16.dp 收敛；若看到 24.dp，需要先确认那是不是组件内部排版或图表绘制留白，而不是页面 margin
 - ROOT 启动统一经过 `RootServerStarter.start(context, source)`
+- root 模式下主 `Server` 会派生 `NotificationServer` 子进程处理通知；通知相关改动必须同时检查 `ChildServerBridge`、socket 协议与 `LocalNotificationUtil`
+- `NotificationServer` 依赖 `FakeContext` 获取可用 `Context` 与外部 Provider；修改通知链路时不要假设它运行在常规 Android `Application` 环境中
+- `LocalNotificationUtil` 当前通过复用 `Notification.Builder` 承担通知更新的性能优化；修改通知字段时不要无意退回到“每次更新都新建 Builder”的实现
+- `Server` 初始化末尾会创建 `BinderSender`；修改 Binder 建连或进程恢复逻辑时必须同时检查 ProcessObserver / UidObserver 重推行为
 - 当前设置系统按 `AppSettings`、`StatisticsSettings`、`ServerSettings` 分层；`SharedSettings.kt` 负责三类设置的 SharedPreferences 读写，以及 `logLevel` 编解码
 - `ServerSettings` 当前同时承载服务端运行参数与功率展示共用配置；`notificationEnabled`、`dualCellEnabled`、`calibrationValue` 都属于 `ServerSettings`，其中后两者由 App 展示侧直接复用
 - 更新检测通道属于 `AppSettings`，当前字段为 `AppSettings.updateChannel`，使用 `UpdateChannel` 枚举持久化
@@ -451,6 +493,7 @@ shared/src/main/
   - `LoggerX.w<Foo>("...")`
   - `LoggerX.e<Foo>("...", tr = e)`
 - Java 或无法使用 reified 的场景使用字符串 Tag 重载
+- App、Server、NotificationServer 当前都注册了默认未捕获异常处理器；涉及进程入口改动时必须同步检查崩溃日志是否仍能落盘并正确关闭 writer
 - 日志内容保持结构化前缀，例如：
   - `[BOOT]`
   - `[启动]`
