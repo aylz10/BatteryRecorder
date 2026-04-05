@@ -2,7 +2,6 @@ package yangfentuozi.batteryrecorder.server.notification.server
 
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
-import android.system.Os
 import yangfentuozi.batteryrecorder.server.Global
 import yangfentuozi.batteryrecorder.server.Main
 import yangfentuozi.batteryrecorder.server.notification.server.stream.StreamWriter
@@ -78,8 +77,7 @@ class ChildServerBridge {
             "-Djava.class.path=${Global.appSourceDir}",
             "/system/bin",
             Main::class.java.name,
-            "--notification-server",
-            Os.getpid().toString()
+            "--notification-server"
         ).start()
 
         handler.removeCallbacks(waitRunnable)
