@@ -16,4 +16,7 @@ interface IService {
     void updateConfig(in ServerSettings config) = 200;
 
     ParcelFileDescriptor sync() = 300;
+
+    // 专用日志导出接口，不复用记录文件同步的删除语义。
+    ParcelFileDescriptor exportLogs() = 301;
 }

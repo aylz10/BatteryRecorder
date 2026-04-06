@@ -1,5 +1,6 @@
 package yangfentuozi.batteryrecorder.shared.util
 
+import android.os.Looper
 import android.util.Log
 import yangfentuozi.batteryrecorder.shared.BuildConfig
 import yangfentuozi.batteryrecorder.shared.config.SettingsConstants
@@ -13,6 +14,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
 
 object LoggerX {
 
@@ -143,6 +145,15 @@ object LoggerX {
         return Log.println(priority.priority, tag, msg)
     }
 
+    /**
+     * 同步刷新当前日志缓冲，确保已投递到 LoggingThread 的日志尽快落盘。
+     *
+     * 导出日志、抓取故障现场等对时效敏感的场景应显式调用，避免只拿到旧文件内容。
+     */
+    fun flushBlocking() {
+        writer?.flushBlocking()
+    }
+
     enum class LogLevel(val priority: Int, val shortName: String) {
         Verbose(Log.VERBOSE, "V"),
         Debug(Log.DEBUG, "D"),
@@ -256,6 +267,36 @@ object LoggerX {
             closed = true
             handler.removeCallbacks(cleanupRunnable)
             handler.post { closeWriter() }
+        }
+
+        /**
+         * 同步刷新当前活跃日志文件，确保主缓冲和重试缓冲都已写入磁盘。
+         */
+        fun flushBlocking() {
+            if (closed) return
+            fun flushAction() {
+                if (closed) return
+                writer?.flushNowBlocking()
+            }
+            if (Looper.myLooper() == handler.looper) {
+                try {
+                    flushAction()
+                } catch (e: Exception) {
+                    e("LogWriter", "flushBlocking: 同步刷新日志失败", tr = e, notWrite = true)
+                }
+                return
+            }
+            val latch = CountDownLatch(1)
+            handler.post {
+                try {
+                    flushAction()
+                } catch (e: Exception) {
+                    e("LogWriter", "flushBlocking: 同步刷新日志失败", tr = e, notWrite = true)
+                } finally {
+                    latch.countDown()
+                }
+            }
+            latch.await()
         }
 
         private fun openWriter() {

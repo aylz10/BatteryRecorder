@@ -168,15 +168,28 @@ class MainViewModel : ViewModel() {
     fun exportLogs(context: Context, destinationUri: Uri) {
         viewModelScope.launch {
             try {
-                LoggerX.i(TAG, "[导出] 开始导出首页日志")
-                withContext(Dispatchers.IO) {
+                LoggerX.i(TAG, "[导出] 开始导出首页日志", notWrite = true)
+                val exportResult = withContext(Dispatchers.IO) {
                     LogRepository.exportLogsZip(
                         context = context,
                         destinationUri = destinationUri
                     )
                 }
-                LoggerX.i(TAG, "[导出] 首页日志导出成功")
-                _userMessage.value = appString(R.string.toast_export_success)
+                LoggerX.d(
+                    TAG,
+                    "[导出] 导出结果: appCount=${exportResult.appFileCount} serverCount=${exportResult.serverFileCount} serverFailed=${exportResult.serverExportFailed}"
+                )
+                if (exportResult.serverExportFailed) {
+                    // “部分成功”是显式设计：Server 日志失败时保留 App 日志导出结果，并明确提示用户。
+                    LoggerX.w(
+                        TAG,
+                        "[导出] 首页日志导出完成，但 Server 日志导出失败: reason=${exportResult.serverFailureMessage}"
+                    )
+                    _userMessage.value = appString(R.string.toast_export_partial_success)
+                } else {
+                    LoggerX.i(TAG, "[导出] 首页日志导出成功")
+                    _userMessage.value = appString(R.string.toast_export_success)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

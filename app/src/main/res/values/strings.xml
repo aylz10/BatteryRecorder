@@ -188,6 +188,7 @@
     <string name="chart_trend_curve">Trend</string>
 
     <string name="toast_export_success">Export successful</string>
+    <string name="toast_export_partial_success">App logs exported, Server log export failed</string>
     <string name="toast_export_failed">Export failed</string>
     <string name="toast_delete_success">Deleted successfully</string>
     <string name="toast_delete_failed">Delete failed</string>

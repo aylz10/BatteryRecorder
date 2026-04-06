@@ -31,6 +31,7 @@ import yangfentuozi.hiddenapi.compat.PackageManagerCompat
 import yangfentuozi.hiddenapi.compat.ServiceManagerCompat
 import java.io.File
 import java.io.FileDescriptor
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.Files
 import java.util.Scanner
@@ -213,6 +214,74 @@ class Server internal constructor() : IService.Stub() {
 
         // 返回给客户端用于读取
         return readEnd
+    }
+
+    /**
+     * 导出当前已落盘的服务端日志目录。
+     *
+     * 导出前会先同步 flush LoggerX，尽量把最近的故障日志和本次导出相关日志一并落盘；
+     * App 侧会把该导出视为 best-effort，失败时显式降级为仅导出 App 日志。
+     *
+     * @return 用于读取日志目录文件流的管道读端。
+     */
+    override fun exportLogs(): ParcelFileDescriptor {
+        val logDir = File("${Constants.SHELL_DATA_DIR_PATH}/${Constants.SHELL_LOG_DIR_PATH}")
+        LoggerX.i(tag, "[导出日志] 收到服务端日志导出请求", notWrite = true)
+        LoggerX.d(tag, "[导出日志] 服务端日志目录: dir=${logDir.absolutePath}", notWrite = true)
+
+        if (!logDir.exists() || !logDir.isDirectory) {
+            LoggerX.w(
+                tag,
+                "[导出日志] 服务端日志目录不可用: dir=${logDir.absolutePath}",
+                notWrite = true
+            )
+            throw FileNotFoundException("服务端日志目录不存在: ${logDir.absolutePath}")
+        }
+
+        LoggerX.flushBlocking()
+
+        val fileCount = countRegularFiles(logDir)
+        if (fileCount == 0) {
+            LoggerX.w(tag, "[导出日志] 服务端日志目录为空: dir=${logDir.absolutePath}", notWrite = true)
+            throw FileNotFoundException("服务端日志目录为空: ${logDir.absolutePath}")
+        }
+
+        val pipe = ParcelFileDescriptor.createPipe()
+        val readEnd = pipe[0]
+        val writeEnd = pipe[1]
+        LoggerX.i(tag, "[导出日志] 开始导出服务端日志: count=$fileCount")
+        LoggerX.d(tag, "[导出日志] 导出管道创建完成")
+        LoggerX.flushBlocking()
+
+        Thread {
+            try {
+                var sentCount = 0
+                PfdFileSender.sendFile(writeEnd, logDir) { file ->
+                    sentCount += 1
+                    LoggerX.d(tag, "[导出日志] 已发送日志文件: file=${file.name}")
+                }
+                LoggerX.i(tag, "[导出日志] 服务端日志导出完成: sentCount=$sentCount")
+            } catch (e: Exception) {
+                LoggerX.e(tag, "[导出日志] 服务端日志导出失败", tr = e)
+                try {
+                    writeEnd.close()
+                } catch (_: Exception) {
+                }
+            }
+        }.start()
+
+        return readEnd
+    }
+
+    /**
+     * 统计目录中的常规文件数量，用于在导出前快速判空并补充调试日志。
+     *
+     * @param directory 待统计目录。
+     * @return 常规文件数量。
+     */
+    private fun countRegularFiles(directory: File): Int {
+        return directory.walkTopDown()
+            .count { it.isFile }
     }
 
     private fun stopServiceImmediately() {

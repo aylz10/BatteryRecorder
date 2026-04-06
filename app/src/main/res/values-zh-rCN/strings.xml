@@ -188,6 +188,7 @@
     <string name="chart_trend_curve">趋势</string>
 
     <string name="toast_export_success">导出成功</string>
+    <string name="toast_export_partial_success">App 日志已导出，Server 日志导出失败</string>
     <string name="toast_export_failed">导出失败</string>
     <string name="toast_delete_success">删除成功</string>
     <string name="toast_delete_failed">删除失败</string>
