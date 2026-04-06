@@ -61,42 +61,28 @@ import yangfentuozi.batteryrecorder.ui.model.LiveRecordSample
 import yangfentuozi.batteryrecorder.ui.theme.AppShape
 import yangfentuozi.batteryrecorder.ui.viewmodel.MainViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
-import yangfentuozi.batteryrecorder.utils.POWER_SCALE_DIVISOR
 import yangfentuozi.batteryrecorder.utils.batteryRecorderScaffoldInsets
 import yangfentuozi.batteryrecorder.utils.navigationBarBottomPadding
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val TAG = "HomeScreen"
 
 private data class HomeBatteryInfo(
     val capacityPercent: Int?,
-    val voltageMv: Int?
+    val rawVoltage: Int?
 )
-
-/**
- * 计算首页当前记录卡片展示使用的电压值。
- *
- * @param voltageMv 系统广播返回的毫伏值。
- * @param calibrationValue 当前校准系数。
- * @return 应展示的伏特值。
- */
-private fun computeHomeDisplayVoltageV(voltageMv: Int, calibrationValue: Int): Double {
-    return 1L * voltageMv * abs(calibrationValue) / (POWER_SCALE_DIVISOR / 1_000_000)
-}
 
 /**
  * 从系统电池广播提取首页当前记录卡片需要的电量与电压。
  *
  * @param intent `ACTION_BATTERY_CHANGED` 广播对象。
- * @return 当前电量百分比与当前电压（毫伏）；字段缺失时对应返回空值。
+ * @return 当前电量百分比与当前电压原始值；字段缺失时对应返回空值。
  */
 private fun resolveHomeBatteryInfo(intent: Intent?): HomeBatteryInfo {
     if (intent == null) {
-        return HomeBatteryInfo(capacityPercent = null, voltageMv = null)
+        return HomeBatteryInfo(capacityPercent = null, rawVoltage = null)
     }
     val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
     val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
@@ -105,8 +91,11 @@ private fun resolveHomeBatteryInfo(intent: Intent?): HomeBatteryInfo {
     } else {
         null
     }
-    val voltageMv = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1).takeIf { it > 0 }
-    return HomeBatteryInfo(capacityPercent = capacityPercent, voltageMv = voltageMv)
+    val rawVoltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1).takeIf { it > 0 }
+    return HomeBatteryInfo(
+        capacityPercent = capacityPercent,
+        rawVoltage = rawVoltage
+    )
 }
 
 /**
@@ -173,7 +162,7 @@ fun HomeScreen(
     val latestRecordIntervalMs by rememberUpdatedState(recordIntervalMs)
     var prevServiceConnected by remember { mutableStateOf(false) }
     var currentCapacityPercent by remember { mutableStateOf<Int?>(null) }
-    var currentVoltageMv by remember { mutableStateOf<Int?>(null) }
+    var currentVoltageRaw by remember { mutableStateOf<Int?>(null) }
 
     // 首页续航卡片与场景卡片共用同一批统计结果。
     val sceneStats by viewModel.sceneStats.collectAsState()
@@ -192,20 +181,17 @@ fun HomeScreen(
     }
     ObserveHomeBatteryInfo(context = context) { batteryInfo ->
         currentCapacityPercent = batteryInfo.capacityPercent
-        currentVoltageMv = batteryInfo.voltageMv
-        val displayVoltageText = batteryInfo.voltageMv?.let { voltageMv ->
-            String.format(
-                Locale.getDefault(),
-                "%.2f",
-                computeHomeDisplayVoltageV(
-                    voltageMv = voltageMv,
-                    calibrationValue = calibrationValue
-                )
-            )
-        } ?: "null"
+        currentVoltageRaw = batteryInfo.rawVoltage
+        val displayVoltageText = batteryInfo.rawVoltage?.let { rawVoltage ->
+            if (rawVoltage in 1..20) {
+                "$rawVoltage V"
+            } else {
+                "$rawVoltage mV"
+            }
+        }
         LoggerX.d(
             TAG,
-            "[首页电压] rawMv=${batteryInfo.voltageMv} calibration=$calibrationValue displayV=$displayVoltageText"
+            "[首页电压] raw=${batteryInfo.rawVoltage} display=$displayVoltageText"
         )
     }
 
@@ -378,7 +364,7 @@ fun HomeScreen(
                             calibrationValue = calibrationValue,
                             dischargeDisplayPositive = dischargeDisplayPositive,
                             currentCapacityPercent = currentCapacityPercent,
-                            currentVoltageMv = currentVoltageMv,
+                            currentVoltageRaw = currentVoltageRaw,
                             onClick = {
                                 if (!currentRecordUiState.isSwitching) {
                                     currentRecordUiState.record?.let { record ->

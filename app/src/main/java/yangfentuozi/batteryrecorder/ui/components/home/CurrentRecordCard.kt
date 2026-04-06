@@ -39,12 +39,10 @@ import yangfentuozi.batteryrecorder.R
 import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
 import yangfentuozi.batteryrecorder.ui.components.global.StatRow
 import yangfentuozi.batteryrecorder.ui.model.CurrentRecordUiState
-import yangfentuozi.batteryrecorder.utils.POWER_SCALE_DIVISOR
 import yangfentuozi.batteryrecorder.utils.computePowerW
 import yangfentuozi.batteryrecorder.utils.formatDateTime
 import yangfentuozi.batteryrecorder.utils.formatDurationHours
 import yangfentuozi.batteryrecorder.utils.formatPower
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -71,7 +69,7 @@ fun CurrentRecordCard(
     calibrationValue: Int,
     dischargeDisplayPositive: Boolean,
     currentCapacityPercent: Int?,
-    currentVoltageMv: Int?,
+    currentVoltageRaw: Int?,
     onClick: (() -> Unit)? = null
 ) {
     val record = uiState.record
@@ -149,8 +147,12 @@ fun CurrentRecordCard(
                 calibrationValue = calibrationValue
             )
             val currentCapacityText = currentCapacityPercent?.let { "$it%" } ?: "--"
-            val currentVoltageText = currentVoltageMv?.let {
-                String.format(Locale.getDefault(), "%.2f V", 1L * it * abs(calibrationValue) / (POWER_SCALE_DIVISOR / 1_000_000))
+            val currentVoltageText = currentVoltageRaw?.let {
+                if (it in 1..20) {
+                    "$it V"
+                } else {
+                    "$it mV"
+                }
             } ?: "--"
 
             Row(
