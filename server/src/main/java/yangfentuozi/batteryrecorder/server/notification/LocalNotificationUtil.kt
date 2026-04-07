@@ -8,11 +8,11 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.RemoteException
 import android.os.ServiceManager
-import yangfentuozi.batteryrecorder.server.R
 import yangfentuozi.batteryrecorder.server.fakecontext.FakeContext
 import yangfentuozi.batteryrecorder.shared.Constants
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import yangfentuozi.hiddenapi.compat.NotificationManagerCompat
+import java.util.Locale
 
 class LocalNotificationUtil : NotificationUtil {
 
@@ -82,7 +82,13 @@ class LocalNotificationUtil : NotificationUtil {
     }
 
     private fun buildNotification(info: NotificationInfo): Notification {
-        val contentText = notificationMessage.format(info.power, 1.0 * info.temp / 10)
+        val contentText = String.format(
+            Locale.getDefault(),
+            NOTIFICATION_CONTENT_FORMAT,
+            info.power,
+            info.temp / 10.0,
+            info.capacity
+        )
         return reusableBuilder.setContentText(contentText)
             .setTicker(contentText)
             .build()
@@ -120,10 +126,6 @@ class LocalNotificationUtil : NotificationUtil {
         .setOngoing(true)
         .setAutoCancel(false)
 
-    private val notificationMessage: String =
-        context.packageManager.getResourcesForApplication(Constants.APP_PACKAGE_NAME)
-            .getString(R.string.notification_message)
-
     companion object {
         private const val SHELL_PACKAGE_NAME = "com.android.shell"
         private const val SHELL_UID = 2000
@@ -132,6 +134,7 @@ class LocalNotificationUtil : NotificationUtil {
         private const val NOTIFICATION_TAG = "batteryrecorder_notification"
         private const val NOTIFICATION_ID = 10086
         private const val NOTIFICATION_TITLE = "BatteryRecorder"
+        private const val NOTIFICATION_CONTENT_FORMAT = "%.2f W | %.1f℃ | %d%%"
     }
 
 }
