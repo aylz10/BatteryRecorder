@@ -148,10 +148,14 @@
     <string name="history_discharging_title">放电历史</string>
     <string name="history_empty_filtered">暂无符合条件的记录</string>
     <string name="history_empty">暂无记录</string>
+    <string name="history_layout_classic">经典</string>
+    <string name="history_layout_emphasis">强调</string>
     <string name="history_import">导入</string>
     <string name="history_export_all">导出全部</string>
     <string name="history_export">导出</string>
     <string name="history_delete">删除</string>
+    <string name="history_average_power">平均功率</string>
+    <string name="history_average_consumption">平均功耗</string>
     <string name="history_item_summary">时长 %1$s · 电量 %2$d%%</string>
     <string name="history_record_detail_title">记录详情</string>
     <string name="history_export_record">导出记录</string>

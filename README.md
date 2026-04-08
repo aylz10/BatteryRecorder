@@ -1,3 +1,5 @@
+[English](README.en.md) | 简体中文
+
 # BatteryRecorder
 
 ## 介绍

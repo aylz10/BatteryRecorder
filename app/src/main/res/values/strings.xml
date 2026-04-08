@@ -148,10 +148,14 @@
     <string name="history_discharging_title">Discharging history</string>
     <string name="history_empty_filtered">No records match the current filter</string>
     <string name="history_empty">No records</string>
+    <string name="history_layout_classic">Classic</string>
+    <string name="history_layout_emphasis">Emphasis</string>
     <string name="history_import">Import</string>
     <string name="history_export_all">Export all</string>
     <string name="history_export">Export</string>
     <string name="history_delete">Delete</string>
+    <string name="history_average_power">AVG Power</string>
+    <string name="history_average_consumption">AVG Power</string>
     <string name="history_item_summary">Duration %1$s · Battery %2$d%%</string>
     <string name="history_record_detail_title">Record details</string>
     <string name="history_export_record">Export record</string>

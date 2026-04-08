@@ -211,9 +211,9 @@ fun HistoryListScreen(
                     ) {
                         Text(
                             text = if (layoutStyle == HistoryListLayoutStyle.Classic) {
-                                "经典"
+                                stringResource(R.string.history_layout_classic)
                             } else {
-                                "强调"
+                                stringResource(R.string.history_layout_emphasis)
                             }
                         )
                     }
@@ -358,9 +358,9 @@ fun HistoryListScreen(
                                     stats.startCapacity - stats.endCapacity
                                 }
                                 val averageLabel = if (record.type == BatteryStatus.Charging) {
-                                    "平均功率"
+                                    stringResource(R.string.history_average_power)
                                 } else {
-                                    "平均功耗"
+                                    stringResource(R.string.history_average_consumption)
                                 }
                                 val averagePowerText = formatPower(
                                     stats.averagePower,
