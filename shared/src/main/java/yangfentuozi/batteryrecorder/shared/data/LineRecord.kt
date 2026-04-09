@@ -18,7 +18,8 @@ data class LineRecord(
             fromParts(line.split(","))
 
         internal fun fromParts(parts: List<String>) : LineRecord? {
-            if (parts.size < 6) return null
+            // 当前记录文件格式固定为 8 列；旧格式不再兼容，避免缺列数据被误解释。
+            if (parts.size < 8) return null
 
             val timestamp = parts[0].toLongOrNull() ?: return null
             val power = parts[1].toLongOrNull() ?: return null
@@ -26,9 +27,9 @@ data class LineRecord(
             val capacity = parts[3].toIntOrNull() ?: return null
             val isDisplayOn = parts[4].toIntOrNull() ?: return null
 
-            val temp = if (parts.size > 5) parts[5].toIntOrNull() ?: return null else 0
-            val voltage = if (parts.size > 7) parts[6].toLongOrNull() ?: return null else 0
-            val current = if (parts.size > 7)parts[7].toLongOrNull() ?: return null else 0
+            val temp = parts[5].toIntOrNull() ?: return null
+            val voltage = parts[6].toLongOrNull() ?: return null
+            val current = parts[7].toLongOrNull() ?: return null
             return LineRecord(
                 timestamp, power, packageName, capacity, isDisplayOn, null, temp, voltage, current
             )

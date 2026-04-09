@@ -440,8 +440,30 @@ fun RecordDetailScreen(
                                 if (detailState.type == BatteryStatus.Charging && capacityChange != null) {
                                     InfoRow(stringResource(R.string.history_info_capacity_change), "${capacityChange}%")
                                 }
-                                InfoRow(stringResource(R.string.history_info_screen_on), formatDurationHours(stats.screenOnTimeMs))
-                                InfoRow(stringResource(R.string.history_info_screen_off), formatDurationHours(stats.screenOffTimeMs))
+                                val screenOnDurationText = formatDurationHours(stats.screenOnTimeMs)
+                                val screenOnText =
+                                    recordDetailPowerUiState?.screenOnConsumedMahBase?.let { baseMah ->
+                                        val displayMah = if (dualCellEnabled) baseMah * 2.0 else baseMah
+                                        "$screenOnDurationText - ${
+                                            String.format(java.util.Locale.getDefault(), "%.1fmAh", displayMah)
+                                        }"
+                                    } ?: screenOnDurationText
+                                val screenOffDurationText = formatDurationHours(stats.screenOffTimeMs)
+                                val screenOffText =
+                                    recordDetailPowerUiState?.screenOffConsumedMahBase?.let { baseMah ->
+                                        val displayMah = if (dualCellEnabled) baseMah * 2.0 else baseMah
+                                        "$screenOffDurationText - ${
+                                            String.format(java.util.Locale.getDefault(), "%.1fmAh", displayMah)
+                                        }"
+                                    } ?: screenOffDurationText
+                                InfoRow(
+                                    stringResource(R.string.history_info_screen_on),
+                                    screenOnText
+                                )
+                                InfoRow(
+                                    stringResource(R.string.history_info_screen_off),
+                                    screenOffText
+                                )
 //                        InfoRow("记录ID", detailState.name.dropLast(4))
                             }
                         }

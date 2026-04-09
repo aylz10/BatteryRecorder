@@ -58,7 +58,9 @@ data class RecordAppDetailUiEntry(
 data class RecordDetailPowerUiState(
     val averagePower: Double,
     val screenOnAveragePower: Double?,
-    val screenOffAveragePower: Double?
+    val screenOffAveragePower: Double?,
+    val screenOnConsumedMahBase: Double,
+    val screenOffConsumedMahBase: Double
 )
 
 private data class LoadedRecordDetailState(
@@ -814,7 +816,9 @@ class HistoryViewModel : ViewModel() {
         return RecordDetailPowerUiState(
             averagePower = stats.averagePowerRaw * multiplier,
             screenOnAveragePower = stats.screenOnAveragePowerRaw?.times(multiplier),
-            screenOffAveragePower = stats.screenOffAveragePowerRaw?.times(multiplier)
+            screenOffAveragePower = stats.screenOffAveragePowerRaw?.times(multiplier),
+            screenOnConsumedMahBase = stats.screenOnConsumedMahBase,
+            screenOffConsumedMahBase = stats.screenOffConsumedMahBase
         )
     }
 
