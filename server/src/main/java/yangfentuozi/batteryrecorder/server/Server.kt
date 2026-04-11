@@ -48,6 +48,7 @@ class Server internal constructor() : IService.Stub() {
     private var writer: PowerRecordWriter
     private var bridge: ChildServerBridge? = null
     private var serverSocket: LocalServerSocket? = null
+    private val appSourceDirObserver: AppSourceDirObserver
 
     private var appDataDir: File
     private var appConfigFile: File
@@ -334,6 +335,16 @@ class Server internal constructor() : IService.Stub() {
         }
     }
 
+    private fun onAppSourceDirChanged(appInfo: ApplicationInfo?) {
+        if (appInfo == null || appInfo.sourceDir == null || appInfo.nativeLibraryDir == null) {
+            LoggerX.i(tag, "onAppSourceDirChanged: App 已被卸载, 退出服务")
+            stopService()
+        } else {
+            LoggerX.i(tag, "onAppSourceDirChanged: App 已被更新, 重启服务")
+            ProcessBuilder(appInfo.nativeLibraryDir + "/libstarter.so").start()
+        }
+    }
+
     init {
         LoggerX.i(tag, "init: Server 初始化开始, uid=${Os.getuid()}")
         if (Looper.getMainLooper() == null) {
@@ -371,6 +382,9 @@ class Server internal constructor() : IService.Stub() {
         appDataDir = File(appInfo.dataDir)
         appConfigFile = File("${appInfo.dataDir}/shared_prefs/${SettingsConstants.PREFS_NAME}.xml")
         appPowerDataDir = File("${appInfo.dataDir}/${Constants.APP_POWER_DATA_PATH}")
+
+        appSourceDirObserver = AppSourceDirObserver(::onAppSourceDirChanged)
+        appSourceDirObserver.startWatching()
 
         val sampler = if (SysfsSampler.init(appInfo)) SysfsSampler else DumpsysSampler()
         LoggerX.i(tag, "init: 采样器选择完成, sampler=${sampler::class.java.simpleName}")
