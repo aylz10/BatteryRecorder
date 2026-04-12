@@ -91,6 +91,7 @@ import yangfentuozi.batteryrecorder.utils.formatDetailDuration
 import yangfentuozi.batteryrecorder.utils.formatDurationHours
 import yangfentuozi.batteryrecorder.utils.formatPower
 import yangfentuozi.batteryrecorder.utils.navigationBarBottomPadding
+import androidx.compose.ui.platform.LocalLocale
 
 private const val RECORD_DETAIL_CHART_PREFS_NAME = "record_detail_chart"
 private const val KEY_POWER_CURVE_MODE = "power_curve_mode"
@@ -98,6 +99,7 @@ private const val KEY_SHOW_CAPACITY_CURVE = "show_capacity_curve"
 private const val KEY_SHOW_TEMP_CURVE = "show_temp_curve"
 private const val KEY_SHOW_VOLTAGE_CURVE = "show_voltage_curve"
 private const val KEY_SHOW_APP_ICONS = "show_app_icons"
+
 // 充电刚开始阶段经常出现短暂反向抖动，不希望仅靠这段预热噪声就把整张图切到双向轴。
 private const val CHARGING_NEGATIVE_AXIS_DETECTION_IGNORE_PERCENT = 10
 private const val MILLISECONDS_PER_HOUR = 3_600_000.0
@@ -273,7 +275,7 @@ fun RecordDetailScreen(
         val chargingAxisDetectionPoints =
             chartUiState.points.drop(chargingNegativeAxisDetectionIgnoreCount)
         val hasNegativeChargingPower = detailType == BatteryStatus.Charging &&
-            chargingAxisDetectionPoints.any { it.rawPowerW < 0.0 }
+                chargingAxisDetectionPoints.any { it.rawPowerW < 0.0 }
         // 放电页仍沿用原来的单负轴逻辑；
         // 充电页则只在稳定阶段检测到负值后切到双向轴。
         val fixedPowerMode = when {
@@ -462,7 +464,8 @@ fun RecordDetailScreen(
                                     val capacityChangeText = buildString {
                                         append("${capacityChange}%")
                                         recordDetailPowerUiState?.totalTransferredMahBase?.let { baseMah ->
-                                            val calibratedMah = baseMah * chargingMahDisplayMultiplier
+                                            val calibratedMah =
+                                                baseMah * chargingMahDisplayMultiplier
                                             val displayMah =
                                                 if (dualCellEnabled) calibratedMah * 2.0 else calibratedMah
                                             val displayWh = computePowerW(
@@ -473,7 +476,7 @@ fun RecordDetailScreen(
                                             append(" - ")
                                             append(
                                                 String.format(
-                                                    java.util.Locale.getDefault(),
+                                                    LocalLocale.current.platformLocale,
                                                     "%.2fWh(%.0fmAh)",
                                                     displayWh,
                                                     displayMah
@@ -493,21 +496,32 @@ fun RecordDetailScreen(
                                     } else {
                                         null
                                     })?.let { baseMah ->
-                                        val displayMah = if (dualCellEnabled) baseMah * 2.0 else baseMah
+                                        val displayMah =
+                                            if (dualCellEnabled) baseMah * 2.0 else baseMah
                                         "$screenOnDurationText - ${
-                                            String.format(java.util.Locale.getDefault(), "%.1fmAh", displayMah)
+                                            String.format(
+                                                java.util.Locale.getDefault(),
+                                                "%.1fmAh",
+                                                displayMah
+                                            )
                                         }"
                                     } ?: screenOnDurationText
-                                val screenOffDurationText = formatDurationHours(stats.screenOffTimeMs)
+                                val screenOffDurationText =
+                                    formatDurationHours(stats.screenOffTimeMs)
                                 val screenOffText =
                                     (if (detailState.type != BatteryStatus.Charging) {
                                         recordDetailPowerUiState?.screenOffConsumedMahBase
                                     } else {
                                         null
                                     })?.let { baseMah ->
-                                        val displayMah = if (dualCellEnabled) baseMah * 2.0 else baseMah
+                                        val displayMah =
+                                            if (dualCellEnabled) baseMah * 2.0 else baseMah
                                         "$screenOffDurationText - ${
-                                            String.format(java.util.Locale.getDefault(), "%.1fmAh", displayMah)
+                                            String.format(
+                                                java.util.Locale.getDefault(),
+                                                "%.1fmAh",
+                                                displayMah
+                                            )
                                         }"
                                     } ?: screenOffDurationText
                                 InfoRow(
@@ -518,7 +532,7 @@ fun RecordDetailScreen(
                                     stringResource(R.string.history_info_screen_off),
                                     screenOffText
                                 )
-//                        InfoRow("记录ID", detailState.name.dropLast(4))
+                                InfoRow("记录ID", detailState.name.dropLast(4))
                             }
                         }
                     }
@@ -820,17 +834,17 @@ private fun buildDetailPowerSummaryText(
         power = powerUiState.averagePower,
         dualCellEnabled = dualCellEnabled,
         calibrationValue = calibrationValue
-    ).replace(" W","")
+    ).replace(" W", "")
     val screenOnText = formatDetailPowerValue(
         power = powerUiState.screenOnAveragePower,
         dualCellEnabled = dualCellEnabled,
         calibrationValue = calibrationValue
-    ).replace(" W","")
+    ).replace(" W", "")
     val screenOffText = formatDetailPowerValue(
         power = powerUiState.screenOffAveragePower,
         dualCellEnabled = dualCellEnabled,
         calibrationValue = calibrationValue
-    ).replace(" W","")
+    ).replace(" W", "")
     return "$averageText / $screenOnText / $screenOffText W"
 }
 
