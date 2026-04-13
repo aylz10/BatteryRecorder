@@ -73,9 +73,20 @@ data class SceneComputeResult(
 
 object SceneStatsComputer {
 
+    private enum class SceneBucket {
+        ScreenOff,
+        ScreenOnDaily,
+        Game
+    }
+
     private data class FileKInput(
         val k: Double,
         val weight: Double
+    )
+
+    private data class CategorizedInterval(
+        val interval: DischargeInterval,
+        val bucket: SceneBucket
     )
 
     private data class FileNonGameContribution(
@@ -104,21 +115,80 @@ object SceneStatsComputer {
      * 这里同时承载展示口径和首页预测场景口径的聚合结果，避免主流程散落多组并行局部变量。
      */
     private data class FileSceneContribution(
-        val rawSignedOffEnergy: Double,
-        val offTime: Long,
-        val rawSignedDailyEnergy: Double,
-        val dailyTime: Long,
-        val rawSignedGameEnergy: Double,
-        val gameTime: Long,
-        val rawTotalCapDrop: Double,
-        val effectiveOffEnergy: Double,
-        val effectiveOffTimeWeighted: Double,
-        val effectiveDailyEnergy: Double,
-        val effectiveDailyTimeWeighted: Double,
-        val effectiveGameEnergy: Double,
-        val effectiveGameTimeWeighted: Double,
-        val effectiveTotalCapDrop: Double
-    )
+        val rawSignedOffEnergy: Double = 0.0,
+        val offTime: Long = 0L,
+        val rawSignedDailyEnergy: Double = 0.0,
+        val dailyTime: Long = 0L,
+        val rawSignedGameEnergy: Double = 0.0,
+        val gameTime: Long = 0L,
+        val rawTotalCapDrop: Double = 0.0,
+        val effectiveOffEnergy: Double = 0.0,
+        val effectiveOffTimeWeighted: Double = 0.0,
+        val effectiveDailyEnergy: Double = 0.0,
+        val effectiveDailyTimeWeighted: Double = 0.0,
+        val effectiveGameEnergy: Double = 0.0,
+        val effectiveGameTimeWeighted: Double = 0.0,
+        val effectiveTotalCapDrop: Double = 0.0
+    ) {
+        // 这是个语法糖
+        operator fun plus(other: FileSceneContribution): FileSceneContribution =
+            FileSceneContribution(
+                rawSignedOffEnergy = rawSignedOffEnergy + other.rawSignedOffEnergy,
+                offTime = offTime + other.offTime,
+                rawSignedDailyEnergy = rawSignedDailyEnergy + other.rawSignedDailyEnergy,
+                dailyTime = dailyTime + other.dailyTime,
+                rawSignedGameEnergy = rawSignedGameEnergy + other.rawSignedGameEnergy,
+                gameTime = gameTime + other.gameTime,
+                rawTotalCapDrop = rawTotalCapDrop + other.rawTotalCapDrop,
+                effectiveOffEnergy = effectiveOffEnergy + other.effectiveOffEnergy,
+                effectiveOffTimeWeighted = effectiveOffTimeWeighted + other.effectiveOffTimeWeighted,
+                effectiveDailyEnergy = effectiveDailyEnergy + other.effectiveDailyEnergy,
+                effectiveDailyTimeWeighted = effectiveDailyTimeWeighted + other.effectiveDailyTimeWeighted,
+                effectiveGameEnergy = effectiveGameEnergy + other.effectiveGameEnergy,
+                effectiveGameTimeWeighted = effectiveGameTimeWeighted + other.effectiveGameTimeWeighted,
+                effectiveTotalCapDrop = effectiveTotalCapDrop + other.effectiveTotalCapDrop
+            )
+
+    }
+
+    private data class HomePredictionTotals(
+        val historicalKEntries: MutableList<FileKInput> = mutableListOf(),
+        var currentNonGameEffectiveMs: Double = 0.0,
+        var kSampleFileCount: Int = 0,
+        var kTotalEnergy: Double = 0.0,
+        var kTotalSocDrop: Double = 0.0,
+        var kRawTotalSocDrop: Double = 0.0,
+        var kTotalDurationMs: Long = 0L,
+        var kCurrent: Double? = null
+    ) {
+        fun merge(contribution: HomePredictionContributionResult) {
+            if (contribution.contributedToTotals) {
+                kSampleFileCount += 1
+                kTotalDurationMs += contribution.totalDurationMs
+                kTotalEnergy += contribution.totalEnergy
+                kTotalSocDrop += contribution.totalSocDrop
+                kRawTotalSocDrop += contribution.rawTotalSocDrop
+            }
+            if (contribution.currentEffectiveMs != null) {
+                currentNonGameEffectiveMs = contribution.currentEffectiveMs
+                kCurrent = contribution.currentK
+            }
+            if (contribution.historicalKEntry != null) {
+                historicalKEntries += contribution.historicalKEntry
+            }
+        }
+    }
+
+    private fun classifyScene(
+        interval: DischargeInterval,
+        gamePackages: Set<String>
+    ): SceneBucket =
+        when {
+            !interval.isDisplayOn -> SceneBucket.ScreenOff
+            interval.packageName == null || interval.packageName !in gamePackages ->
+                SceneBucket.ScreenOnDaily
+            else -> SceneBucket.Game
+        }
 
     /**
      * 计算首页场景统计和首页预测输入。
@@ -188,33 +258,10 @@ object SceneStatsComputer {
             cacheFile.delete()
         }
 
-        var rawSignedOffEnergy = 0.0
-        var offTime = 0L
-        var rawSignedDailyEnergy = 0.0
-        var dailyTime = 0L
-        var rawSignedGameEnergy = 0.0
-        var gameTime = 0L
-
-        var rawTotalCapDrop = 0.0
-        var effectiveTotalCapDrop = 0.0
         var usedFileCount = 0
-
-        var effectiveOffEnergy = 0.0
-        var effectiveOffTimeWeighted = 0.0
-        var effectiveDailyEnergy = 0.0
-        var effectiveDailyTimeWeighted = 0.0
-        var effectiveGameEnergy = 0.0
-        var effectiveGameTimeWeighted = 0.0
-
-        val historicalKEntries = mutableListOf<FileKInput>()
+        var sceneTotals = FileSceneContribution()
+        val homeTotals = HomePredictionTotals()
         val gamePackages = request.gamePackages
-        var currentNonGameEffectiveMs = 0.0
-        var kSampleFileCount = 0
-        var kTotalEnergy = 0.0
-        var kTotalSocDrop = 0.0
-        var kRawTotalSocDrop = 0.0
-        var kTotalDurationMs = 0L
-        var kCurrent: Double? = null
 
         val scanSummary = DischargeRecordScanner.scan(
             context = context,
@@ -230,35 +277,8 @@ object SceneStatsComputer {
             )
 
             usedFileCount += 1
-            rawSignedOffEnergy += sceneContribution.rawSignedOffEnergy
-            offTime += sceneContribution.offTime
-            rawSignedDailyEnergy += sceneContribution.rawSignedDailyEnergy
-            dailyTime += sceneContribution.dailyTime
-            rawSignedGameEnergy += sceneContribution.rawSignedGameEnergy
-            gameTime += sceneContribution.gameTime
-            rawTotalCapDrop += sceneContribution.rawTotalCapDrop
-            effectiveOffEnergy += sceneContribution.effectiveOffEnergy
-            effectiveOffTimeWeighted += sceneContribution.effectiveOffTimeWeighted
-            effectiveDailyEnergy += sceneContribution.effectiveDailyEnergy
-            effectiveDailyTimeWeighted += sceneContribution.effectiveDailyTimeWeighted
-            effectiveGameEnergy += sceneContribution.effectiveGameEnergy
-            effectiveGameTimeWeighted += sceneContribution.effectiveGameTimeWeighted
-            effectiveTotalCapDrop += sceneContribution.effectiveTotalCapDrop
-
-            if (homeContribution.contributedToTotals) {
-                kSampleFileCount += 1
-                kTotalDurationMs += homeContribution.totalDurationMs
-                kTotalEnergy += homeContribution.totalEnergy
-                kTotalSocDrop += homeContribution.totalSocDrop
-                kRawTotalSocDrop += homeContribution.rawTotalSocDrop
-            }
-            if (homeContribution.currentEffectiveMs != null) {
-                currentNonGameEffectiveMs = homeContribution.currentEffectiveMs
-                kCurrent = homeContribution.currentK
-            }
-            if (homeContribution.historicalKEntry != null) {
-                historicalKEntries += homeContribution.historicalKEntry
-            }
+            sceneTotals += sceneContribution
+            homeTotals.merge(homeContribution)
         }
 
         if (usedFileCount <= 0) {
@@ -273,67 +293,88 @@ object SceneStatsComputer {
             )
         }
 
-        val totalMs = offTime + dailyTime + gameTime
+        val totalMs = sceneTotals.offTime + sceneTotals.dailyTime + sceneTotals.gameTime
         if (totalMs <= 0L) {
-            LoggerX.w(TAG, "[预测] 场景统计总时长无效: off=$offTime daily=$dailyTime game=$gameTime")
+            LoggerX.w(
+                TAG,
+                "[预测] 场景统计总时长无效: off=${sceneTotals.offTime} daily=${sceneTotals.dailyTime} game=${sceneTotals.gameTime}"
+            )
             return SceneComputeResult(
                 displayStats = null,
                 predictionStats = null,
                 homePredictionInputs = buildInsufficientHomePredictionInputs(
                     request = request,
-                    currentNonGameEffectiveMs = currentNonGameEffectiveMs,
-                    kSampleFileCount = kSampleFileCount,
-                    kTotalEnergy = kTotalEnergy,
-                    kTotalSocDrop = kTotalSocDrop,
-                    kRawTotalSocDrop = kRawTotalSocDrop,
-                    kTotalDurationMs = kTotalDurationMs,
+                    currentNonGameEffectiveMs = homeTotals.currentNonGameEffectiveMs,
+                    kSampleFileCount = homeTotals.kSampleFileCount,
+                    kTotalEnergy = homeTotals.kTotalEnergy,
+                    kTotalSocDrop = homeTotals.kTotalSocDrop,
+                    kRawTotalSocDrop = homeTotals.kRawTotalSocDrop,
+                    kTotalDurationMs = homeTotals.kTotalDurationMs,
                     insufficientReason = appString(R.string.prediction_reason_no_valid_scene_duration)
                 )
             )
         }
 
-        val rawTotalEnergy = rawSignedOffEnergy + rawSignedDailyEnergy + rawSignedGameEnergy
-        val effectiveTotalEnergy = effectiveOffEnergy + effectiveDailyEnergy + effectiveGameEnergy
+        val rawTotalEnergy =
+            sceneTotals.rawSignedOffEnergy + sceneTotals.rawSignedDailyEnergy + sceneTotals.rawSignedGameEnergy
+        val effectiveTotalEnergy =
+            sceneTotals.effectiveOffEnergy + sceneTotals.effectiveDailyEnergy + sceneTotals.effectiveGameEnergy
 
         val displayStats = SceneStats(
-            screenOffAvgPowerRaw = if (offTime > 0) rawSignedOffEnergy / offTime.toDouble() else 0.0,
-            screenOffTotalMs = offTime,
-            screenOffEffectiveTotalMs = offTime.toDouble(),
-            screenOnDailyAvgPowerRaw = if (dailyTime > 0) rawSignedDailyEnergy / dailyTime.toDouble() else 0.0,
-            screenOnDailyTotalMs = dailyTime,
-            screenOnDailyEffectiveTotalMs = dailyTime.toDouble(),
+            screenOffAvgPowerRaw = if (sceneTotals.offTime > 0) {
+                sceneTotals.rawSignedOffEnergy / sceneTotals.offTime.toDouble()
+            } else {
+                0.0
+            },
+            screenOffTotalMs = sceneTotals.offTime,
+            screenOffEffectiveTotalMs = sceneTotals.offTime.toDouble(),
+            screenOnDailyAvgPowerRaw = if (sceneTotals.dailyTime > 0) {
+                sceneTotals.rawSignedDailyEnergy / sceneTotals.dailyTime.toDouble()
+            } else {
+                0.0
+            },
+            screenOnDailyTotalMs = sceneTotals.dailyTime,
+            screenOnDailyEffectiveTotalMs = sceneTotals.dailyTime.toDouble(),
             totalEnergyRawMs = rawTotalEnergy,
-            totalSocDrop = rawTotalCapDrop,
+            totalSocDrop = sceneTotals.rawTotalCapDrop,
             totalDurationMs = totalMs,
             fileCount = usedFileCount,
-            rawTotalSocDrop = rawTotalCapDrop
+            rawTotalSocDrop = sceneTotals.rawTotalCapDrop
         )
 
         val predictionStats = SceneStats(
-            screenOffAvgPowerRaw = if (effectiveOffTimeWeighted > 0) effectiveOffEnergy / effectiveOffTimeWeighted else 0.0,
-            screenOffTotalMs = offTime,
-            screenOffEffectiveTotalMs = effectiveOffTimeWeighted,
-            screenOnDailyAvgPowerRaw = if (effectiveDailyTimeWeighted > 0) effectiveDailyEnergy / effectiveDailyTimeWeighted else 0.0,
-            screenOnDailyTotalMs = dailyTime,
-            screenOnDailyEffectiveTotalMs = effectiveDailyTimeWeighted,
+            screenOffAvgPowerRaw = if (sceneTotals.effectiveOffTimeWeighted > 0) {
+                sceneTotals.effectiveOffEnergy / sceneTotals.effectiveOffTimeWeighted
+            } else {
+                0.0
+            },
+            screenOffTotalMs = sceneTotals.offTime,
+            screenOffEffectiveTotalMs = sceneTotals.effectiveOffTimeWeighted,
+            screenOnDailyAvgPowerRaw = if (sceneTotals.effectiveDailyTimeWeighted > 0) {
+                sceneTotals.effectiveDailyEnergy / sceneTotals.effectiveDailyTimeWeighted
+            } else {
+                0.0
+            },
+            screenOnDailyTotalMs = sceneTotals.dailyTime,
+            screenOnDailyEffectiveTotalMs = sceneTotals.effectiveDailyTimeWeighted,
             totalEnergyRawMs = effectiveTotalEnergy,
-            totalSocDrop = effectiveTotalCapDrop,
+            totalSocDrop = sceneTotals.effectiveTotalCapDrop,
             totalDurationMs = totalMs,
             fileCount = usedFileCount,
-            rawTotalSocDrop = rawTotalCapDrop
+            rawTotalSocDrop = sceneTotals.rawTotalCapDrop
         )
 
         val homePredictionInputs = buildHomePredictionInputs(
             request = request,
             predictionStats = predictionStats,
-            historicalKEntries = historicalKEntries,
-            currentNonGameEffectiveMs = currentNonGameEffectiveMs,
-            kSampleFileCount = kSampleFileCount,
-            kTotalEnergy = kTotalEnergy,
-            kTotalSocDrop = kTotalSocDrop,
-            kRawTotalSocDrop = kRawTotalSocDrop,
-            kTotalDurationMs = kTotalDurationMs,
-            kCurrent = kCurrent
+            historicalKEntries = homeTotals.historicalKEntries,
+            currentNonGameEffectiveMs = homeTotals.currentNonGameEffectiveMs,
+            kSampleFileCount = homeTotals.kSampleFileCount,
+            kTotalEnergy = homeTotals.kTotalEnergy,
+            kTotalSocDrop = homeTotals.kTotalSocDrop,
+            kRawTotalSocDrop = homeTotals.kRawTotalSocDrop,
+            kTotalDurationMs = homeTotals.kTotalDurationMs,
+            kCurrent = homeTotals.kCurrent
         )
 
         if (homePredictionInputs.insufficientReason == null) {
@@ -346,7 +387,7 @@ object SceneStatsComputer {
         }
         LoggerX.i(
             TAG,
-            "[预测] 场景统计完成: usedFiles=$usedFileCount kSampleFiles=$kSampleFileCount kBase=${homePredictionInputs.kBase} kCurrent=$kCurrent kFallback=${homePredictionInputs.kFallback} kCV=${homePredictionInputs.kCV} kEffectiveN=${homePredictionInputs.kEffectiveN}"
+            "[预测] 场景统计完成: usedFiles=$usedFileCount kSampleFiles=${homeTotals.kSampleFileCount} kBase=${homePredictionInputs.kBase} kCurrent=${homeTotals.kCurrent} kFallback=${homePredictionInputs.kFallback} kCV=${homePredictionInputs.kCV} kEffectiveN=${homePredictionInputs.kEffectiveN}"
         )
 
         return SceneComputeResult(
@@ -368,6 +409,12 @@ object SceneStatsComputer {
         currentDischargeFileName: String?,
         weightingEnabled: Boolean
     ): Pair<FileSceneContribution, HomePredictionContributionResult> {
+        val categorizedIntervals = acceptedFile.intervals.map { interval ->
+            CategorizedInterval(
+                interval = interval,
+                bucket = classifyScene(interval, gamePackages)
+            )
+        }
         var fileRawSignedOffEnergy = 0.0
         var fileOffTime = 0L
         var fileRawSignedDailyEnergy = 0.0
@@ -376,21 +423,24 @@ object SceneStatsComputer {
         var fileGameTime = 0L
         var fileNonGameRawCapDrop = 0.0
 
-        acceptedFile.intervals.forEach { interval ->
-            when {
-                !interval.isDisplayOn -> {
+        categorizedIntervals.forEach { categorized ->
+            when (categorized.bucket) {
+                SceneBucket.ScreenOff -> {
+                    val interval = categorized.interval
                     fileRawSignedOffEnergy += interval.signedEnergyRawMs
                     fileOffTime += interval.durationMs
                     fileNonGameRawCapDrop += interval.capDrop
                 }
 
-                interval.packageName == null || interval.packageName !in gamePackages -> {
+                SceneBucket.ScreenOnDaily -> {
+                    val interval = categorized.interval
                     fileRawSignedDailyEnergy += interval.signedEnergyRawMs
                     fileDailyTime += interval.durationMs
                     fileNonGameRawCapDrop += interval.capDrop
                 }
 
-                else -> {
+                SceneBucket.Game -> {
+                    val interval = categorized.interval
                     fileRawSignedGameEnergy += interval.signedEnergyRawMs
                     fileGameTime += interval.durationMs
                 }
@@ -413,25 +463,26 @@ object SceneStatsComputer {
         var fileHomeEffectiveGameCapDrop = 0.0
         var fileHomeEffectiveNonGameCapDrop = 0.0
 
-        acceptedFile.intervals.forEach { interval ->
+        categorizedIntervals.forEach { categorized ->
+            val interval = categorized.interval
             val homeWeight = if (useHomeWeightedCurrentFile) interval.timeDecayWeight else 1.0
             val homeEffectiveDuration = interval.durationMs.toDouble() * homeWeight
             val homeEffectiveEnergy = abs(interval.signedEnergyRawMs) * homeWeight
             val homeEffectiveCapDrop = interval.capDrop * homeWeight
-            when {
-                !interval.isDisplayOn -> {
+            when (categorized.bucket) {
+                SceneBucket.ScreenOff -> {
                     fileHomeEffectiveOffEnergy += homeEffectiveEnergy
                     fileHomeEffectiveOffTime += homeEffectiveDuration
                     fileHomeEffectiveNonGameCapDrop += homeEffectiveCapDrop
                 }
 
-                interval.packageName == null || interval.packageName !in gamePackages -> {
+                SceneBucket.ScreenOnDaily -> {
                     fileHomeEffectiveDailyEnergy += homeEffectiveEnergy
                     fileHomeEffectiveDailyTime += homeEffectiveDuration
                     fileHomeEffectiveNonGameCapDrop += homeEffectiveCapDrop
                 }
 
-                else -> {
+                SceneBucket.Game -> {
                     fileHomeEffectiveGameEnergy += homeEffectiveEnergy
                     fileHomeEffectiveGameTime += homeEffectiveDuration
                     fileHomeEffectiveGameCapDrop += homeEffectiveCapDrop
