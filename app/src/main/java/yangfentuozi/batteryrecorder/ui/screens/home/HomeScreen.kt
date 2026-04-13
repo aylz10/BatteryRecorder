@@ -296,6 +296,7 @@ fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
 
         onDispose {
+            Service.service?.unregisterRecordListener(listener)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
