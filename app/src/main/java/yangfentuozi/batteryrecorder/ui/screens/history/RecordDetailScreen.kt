@@ -478,6 +478,7 @@ fun RecordDetailScreen(
                                     val capacityChangeText = buildString {
                                         append("${capacityChange.totalPercent}%")
                                         val displayWh = recordDetailPowerUiState?.totalTransferredWh
+                                        val displayMah = (displayWh?.let { it * 1000 / 3.85 }) ?: 0.0
                                             ?: computeEnergyWh(
                                             rawPower = stats.averagePower,
                                             durationMs = durationMs,
@@ -488,8 +489,9 @@ fun RecordDetailScreen(
                                         append(
                                             String.format(
                                                 locale,
-                                                "%.3fWh",
-                                                displayWh
+                                                "%.3fWh(%.0fMah)",
+                                                displayWh,
+                                                displayMah
                                             )
                                         )
                                     }
