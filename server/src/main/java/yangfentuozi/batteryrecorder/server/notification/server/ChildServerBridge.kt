@@ -38,6 +38,7 @@ class ChildServerBridge {
                         try {
                             socket.connect(LocalSocketAddress(NotificationServer.SOCKET_NAME))
                             writer = StreamWriter(socket.outputStream)
+                            onWriterConnected?.invoke(writer!!)
                             LoggerX.i(
                                 tag,
                                 "connectSocket: 已连接 NotificationServer, attempt=${index + 1}"
@@ -64,6 +65,7 @@ class ChildServerBridge {
     private var socket: LocalSocket = LocalSocket()
     var writer: StreamWriter? = null
         private set
+    var onWriterConnected: ((StreamWriter) -> Unit)? = null
 
     init {
         startNotificationServer()
