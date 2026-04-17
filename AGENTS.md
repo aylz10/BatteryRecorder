@@ -107,13 +107,16 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
   `timestamp,power,packageName,capacity,isDisplayOn,temp,voltage,current`
 - 其中 `voltage` 列落盘单位为 4 位 `mV`；运行时 `LineRecord.voltage` 仍统一使用 `uV`
 - `LineRecord.status` 当前只用于运行时采样链路，不参与记录文件落盘；记录文件语义由目录类型（charge/discharge）与 8 列 CSV 本身共同决定
+- 当前活跃分段保持明文 `时间戳.txt`；Server 侧已关闭历史分段继续保持明文，App 会在 `sync()` 编排入口压缩本地非活跃历史为 `时间戳.txt.gz`
+- 记录的逻辑名称仍固定为 `时间戳.txt`；历史列表、导航、删除、缓存与导出都按逻辑名称工作，物理层再解析到 `.txt` / `.txt.gz`
 
 ### 数据同步链路
 
 - Server 以 shell 权限运行时，记录文件落在 `com.android.shell` 数据目录
 - App 通过 `sync()` AIDL 拿到 `ParcelFileDescriptor`
 - 传输协议由 `PfdFileSender` / `PfdFileReceiver` / `SyncConstants` 实现
-- 同步结束后，已传输的 shell 侧旧文件会按当前文件排除规则清理
+- `sync()` 当前会先读取当前活跃记录，再按需从 shell 侧拉取记录文件；不论 root 还是 shell，都会在 App 侧压缩本地非活跃历史并在最后预热本地 `power_stats` 缓存
+- 同步结束后，已传输的 shell 侧旧文件会按当前文件排除规则清理；App 侧压缩本地历史时通过 `.tmp` 临时文件收尾，目录枚举继续忽略临时文件
 
 ### 首页统计与预测链路
 
@@ -241,11 +244,10 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 
 - `AppStatsComputer`、`SceneStatsComputer` 与记录详情 `power_stats` 共用 `HistoryCacheVersions.HISTORY_STATS_CACHE_VERSION`
 - 缓存命名统一通过 `HistoryCacheNaming.kt`
+- `power_stats` 当前按逻辑记录名 `时间戳.txt` 命名，不直接跟随物理 `.txt.gz` 文件名；命中仍继续校验源文件 `lastModified()`
 - 具体缓存改动流程与检查清单已沉淀到项目 skill：`.agents/skills/history-stats-cache-change/`
 
-## 目录索引
-
-### 根模块
+## 根模块
 
 ```text
 app/
@@ -255,221 +257,73 @@ hiddenapi/
 docs/
 ```
 
-### App 模块
-
-```text
-app/src/main/java/yangfentuozi/batteryrecorder/
-├── data/
-│   ├── history/
-│   │   ├── HistoryRepository.kt
-│   │   ├── BatteryPredictor.kt
-│   │   ├── DischargeRecordScanner.kt
-│   │   ├── SceneStatsComputer.kt
-│   │   ├── AppStatsComputer.kt
-│   │   ├── RecordAppStatsComputer.kt
-│   │   ├── RecordDetailPowerStatsComputer.kt
-│   │   ├── HistoryCacheNaming.kt
-│   │   ├── HistoryCacheVersions.kt
-│   │   ├── StatisticsRequest.kt
-│   │   └── SyncUtil.kt
-│   ├── log/
-│   │   └── LogRepository.kt
-│   ├── model/
-│   └── ...
-├── ipc/
-├── startup/
-├── ui/
-│   ├── BatteryRecorderApp.kt
-│   ├── MainActivity.kt
-│   ├── BaseActivity.kt
-│   ├── EdgeToEdgeInsets.kt
-│   ├── navigation/
-│   ├── screens/
-│   │   ├── home/HomeScreen.kt
-│   │   ├── settings/SettingsScreen.kt
-│   │   ├── prediction/PredictionDetailScreen.kt
-│   │   └── history/
-│   │       ├── HistoryListScreen.kt
-│   │       └── RecordDetailScreen.kt
-│   ├── components/
-│   │   ├── charts/PowerCapacityChart.kt
-│   │   ├── global/
-│   │   │   ├── LazySplicedColumnGroup.kt
-│   │   │   ├── MarkdownText.kt
-│   │   │   └── ...
-│   │   ├── home/
-│   │   │   ├── BatteryRecorderTopAppBar.kt
-│   │   │   ├── CurrentRecordCard.kt
-│   │   │   ├── PredictionCard.kt  (同时包含 SceneStatsCard)
-│   │   │   ├── StartServerCard.kt
-│   │   │   └── StatsCard.kt
-│   │   └── settings/sections/
-│   ├── dialog/
-│   │   ├── history/ChartGuideDialog.kt
-│   │   ├── home/
-│   │   │   ├── AboutDialog.kt
-│   │   │   ├── AdbGuideDialog.kt
-│   │   │   ├── DocsIntroDialog.kt
-│   │   │   ├── RecordCleanupDialog.kt
-│   │   │   └── UpdateDialog.kt
-│   │   └── settings/
-│   │       ├── WeightedAlgorithmDialog.kt
-│   │       ├── SceneStatsRecentFileCountDialog.kt
-│   │       └── ...
-│   ├── model/
-│   ├── theme/
-│   └── viewmodel/
-│       ├── MainViewModel.kt
-│       ├── SettingsViewModel.kt
-│       ├── HistoryViewModel.kt
-│       ├── PredictionDetailViewModel.kt
-│       └── PowerDisplayMapper.kt
-└── utils/
-    ├── AppIconMemoryCache.kt
-    ├── AppDownloader.kt
-    ├── FormatUtil.kt
-    └── UpdateUtil.kt
-```
-
-### Server 模块
-
-```text
-server/src/main/
-├── aidl/
-├── java/yangfentuozi/batteryrecorder/server/
-│   ├── AppSourceDirObserver.kt
-│   ├── BinderSender.kt
-│   ├── Global.kt
-│   ├── Main.kt
-│   ├── Server.kt
-│   ├── fakecontext/
-│   │   ├── ExternalProviderResolver.kt
-│   │   └── FakeContext.kt
-│   ├── notification/
-│   │   ├── LocalNotificationUtil.kt
-│   │   ├── NotificationInfo.kt
-│   │   ├── NotificationUtil.kt
-│   │   ├── RemoteNotificationUtil.kt
-│   │   └── server/
-│   │       ├── ChildServerBridge.kt
-│   │       ├── NotificationServer.kt
-│   │       └── stream/
-│   ├── recorder/
-│   │   └── Monitor.kt
-│   ├── sampler/
-│   │   ├── Sampler.kt
-│   │   ├── SysfsSampler.kt
-│   │   └── DumpsysSampler.kt
-│   ├── stream/
-│   │   ├── StreamProtocol.kt
-│   │   ├── StreamReader.kt
-│   │   └── StreamWriter.kt
-│   └── writer/
-│       └── PowerRecordWriter.kt
-└── jni/
-    ├── CMakeLists.txt
-    ├── dump_parser.cpp
-    ├── power_reader.cpp
-    └── starter.cpp
-```
-
-### Shared 模块
-
-```text
-shared/src/main/
-├── aidl/
-└── java/yangfentuozi/batteryrecorder/shared/
-    ├── config/
-    │   ├── ConfigItems.kt
-    │   ├── SettingsConstants.kt
-    │   ├── ConfigUtil.kt
-    │   ├── SharedSettings.kt
-    │   └── dataclass/
-    ├── data/
-    │   ├── BatteryStatus.kt
-    │   ├── LineRecord.kt
-    │   ├── RecordFileParser.kt
-    │   ├── RecordsFile.kt
-    │   └── RecordsStats.kt
-    ├── sync/
-    │   ├── PfdFileSender.kt
-    │   ├── PfdFileReceiver.kt
-    │   └── SyncConstants.kt
-    ├── util/
-    │   ├── Handlers.kt
-    │   └── LoggerX.kt
-    ├── writer/
-    │   └── AdvancedWriter.kt
-    └── Constants.kt
-```
-
 ## 关键路径索引
 
-| 功能                        | 路径                                                                                                 |
-|---------------------------|----------------------------------------------------------------------------------------------------|
-| App 进程入口                  | `app/.../App.kt`                                                                                   |
-| App 入口 Composable         | `app/.../ui/BatteryRecorderApp.kt`                                                                 |
-| Activity Edge-to-Edge 入口  | `app/.../ui/BaseActivity.kt`                                                                       |
-| 页面级 Insets 公共方法           | `app/.../ui/EdgeToEdgeInsets.kt`                                                                   |
-| 导航路由                      | `app/.../ui/navigation/NavRoute.kt`                                                                |
-| 导航宿主与历史页共享 ViewModel      | `app/.../ui/navigation/BatteryRecorderNavHost.kt`                                                  |
-| 首页                        | `app/.../ui/screens/home/HomeScreen.kt`                                                            |
-| 首页 `TopAppBar`                 | `app/.../ui/components/home/BatteryRecorderTopAppBar.kt`                                            |
-| 首页当前记录卡片                  | `app/.../ui/components/home/CurrentRecordCard.kt`                                                  |
-| 首页 Root 启动卡片              | `app/.../ui/components/home/StartServerCard.kt`                                                    |
-| 首页汇总卡片                    | `app/.../ui/components/home/StatsCard.kt`                                                          |
-| 首页记录清理弹窗                  | `app/.../ui/dialog/home/RecordCleanupDialog.kt`                                                    |
-| 设置页                       | `app/.../ui/screens/settings/SettingsScreen.kt`                                                    |
-| 历史列表                      | `app/.../ui/screens/history/HistoryListScreen.kt`                                                  |
-| 记录详情页                     | `app/.../ui/screens/history/RecordDetailScreen.kt`                                                 |
-| 预测详情页                     | `app/.../ui/screens/prediction/PredictionDetailScreen.kt`                                          |
-| 预测详情 ViewModel            | `app/.../ui/viewmodel/PredictionDetailViewModel.kt`                                                |
-| 首页预测/场景卡片                 | `app/.../ui/components/home/PredictionCard.kt`                                                     |
-| 图表说明弹窗                    | `app/.../ui/dialog/history/ChartGuideDialog.kt`                                                    |
-| ViewModel                 | `app/.../ui/viewmodel/`                                                                            |
-| 记录详情图表状态                  | `app/.../ui/viewmodel/HistoryViewModel.kt`                                                         |
-| 放电显示映射                    | `app/.../ui/viewmodel/PowerDisplayMapper.kt`                                                       |
-| IPC Binder 持有             | `app/.../ipc/Service.kt`                                                                           |
-| Binder 接收 Provider        | `app/.../ipc/BinderProvider.kt`                                                                    |
-| 配置 Provider               | `app/.../ipc/ConfigProvider.kt`                                                                    |
-| 开机自启动                     | `app/.../startup/BootCompletedReceiver.kt`, `RootServerStarter.kt`, `BootAutoStartNotification.kt` |
-| 原生启动器                     | `server/src/main/jni/starter.cpp`                                                                  |
-| 历史仓库                      | `app/.../data/history/HistoryRepository.kt`                                                        |
-| 单记录应用统计                   | `app/.../data/history/RecordAppStatsComputer.kt`                                                   |
-| 记录详情功耗统计                  | `app/.../data/history/RecordDetailPowerStatsComputer.kt`                                           |
-| 应用预测统计                    | `app/.../data/history/AppStatsComputer.kt`                                                         |
-| 场景统计                      | `app/.../data/history/SceneStatsComputer.kt`                                                       |
-| 放电扫描                      | `app/.../data/history/DischargeRecordScanner.kt`                                                   |
-| 续航预测                      | `app/.../data/history/BatteryPredictor.kt`                                                         |
-| 缓存命名与版本                   | `app/.../data/history/HistoryCacheNaming.kt`, `HistoryCacheVersions.kt`                            |
-| 日志导出                      | `app/.../data/log/LogRepository.kt`                                                                |
-| 图表组件                      | `app/.../ui/components/charts/PowerCapacityChart.kt`                                               |
-| 图标缓存                      | `app/.../utils/AppIconMemoryCache.kt`                                                              |
-| 更新下载/安装                    | `app/.../utils/AppDownloader.kt`                                                                   |
-| 功率换算/格式化                  | `app/.../utils/FormatUtil.kt`                                                                      |
-| 更新检查工具（对象名 `UpdateUtils`） | `app/.../utils/UpdateUtil.kt`                                                                      |
-| 更新通道展示映射                    | `app/.../ui/model/UpdateChannelDisplayName.kt`                                                    |
-| Server 进程入口               | `server/.../Main.kt`                                                                               |
-| App 更新监听与自动重启              | `server/.../AppSourceDirObserver.kt`, `server/.../Server.kt`                                      |
-| Server Binder 实现          | `server/.../Server.kt`                                                                             |
-| Binder 重推链路                | `server/.../BinderSender.kt`                                                                       |
-| 通知子进程桥接                    | `server/.../notification/server/ChildServerBridge.kt`                                              |
-| 通知子进程入口                    | `server/.../notification/server/NotificationServer.kt`                                             |
-| 本地通知下发                    | `server/.../notification/LocalNotificationUtil.kt`                                                 |
-| FakeContext                | `server/.../fakecontext/FakeContext.kt`                                                            |
-| 采样循环                      | `server/.../recorder/Monitor.kt`                                                                   |
-| 采样抽象                      | `server/.../sampler/Sampler.kt`                                                                    |
-| sysfs/JNI 采样              | `server/.../sampler/SysfsSampler.kt`                                                               |
-| dumpsys 回退采样              | `server/.../sampler/DumpsysSampler.kt`                                                             |
-| Server 状态续接协议               | `server/.../stream/StreamProtocol.kt`, `StreamReader.kt`, `StreamWriter.kt`                       |
-| 写文件                       | `server/.../writer/PowerRecordWriter.kt`                                                           |
+| 功能                        | 路径                                                                                                               |
+|---------------------------|------------------------------------------------------------------------------------------------------------------|
+| App 进程入口                  | `app/.../App.kt`                                                                                                 |
+| App 入口 Composable         | `app/.../ui/BatteryRecorderApp.kt`                                                                               |
+| Activity Edge-to-Edge 入口  | `app/.../ui/BaseActivity.kt`                                                                                     |
+| 页面级 Insets 公共方法           | `app/.../ui/EdgeToEdgeInsets.kt`                                                                                 |
+| 导航路由                      | `app/.../ui/navigation/NavRoute.kt`                                                                              |
+| 导航宿主与历史页共享 ViewModel      | `app/.../ui/navigation/BatteryRecorderNavHost.kt`                                                                |
+| 首页                        | `app/.../ui/screens/home/HomeScreen.kt`                                                                          |
+| 首页 `TopAppBar`            | `app/.../ui/components/home/BatteryRecorderTopAppBar.kt`                                                         |
+| 首页当前记录卡片                  | `app/.../ui/components/home/CurrentRecordCard.kt`                                                                |
+| 首页 Root 启动卡片              | `app/.../ui/components/home/StartServerCard.kt`                                                                  |
+| 首页汇总卡片                    | `app/.../ui/components/home/StatsCard.kt`                                                                        |
+| 首页记录清理弹窗                  | `app/.../ui/dialog/home/RecordCleanupDialog.kt`                                                                  |
+| 设置页                       | `app/.../ui/screens/settings/SettingsScreen.kt`                                                                  |
+| 历史列表                      | `app/.../ui/screens/history/HistoryListScreen.kt`                                                                |
+| 记录详情页                     | `app/.../ui/screens/history/RecordDetailScreen.kt`                                                               |
+| 预测详情页                     | `app/.../ui/screens/prediction/PredictionDetailScreen.kt`                                                        |
+| 预测详情 ViewModel            | `app/.../ui/viewmodel/PredictionDetailViewModel.kt`                                                              |
+| 首页预测/场景卡片                 | `app/.../ui/components/home/PredictionCard.kt`                                                                   |
+| 图表说明弹窗                    | `app/.../ui/dialog/history/ChartGuideDialog.kt`                                                                  |
+| ViewModel                 | `app/.../ui/viewmodel/`                                                                                          |
+| 记录详情图表状态                  | `app/.../ui/viewmodel/HistoryViewModel.kt`                                                                       |
+| 放电显示映射                    | `app/.../ui/viewmodel/PowerDisplayMapper.kt`                                                                     |
+| IPC Binder 持有             | `app/.../ipc/Service.kt`                                                                                         |
+| Binder 接收 Provider        | `app/.../ipc/BinderProvider.kt`                                                                                  |
+| 配置 Provider               | `app/.../ipc/ConfigProvider.kt`                                                                                  |
+| 开机自启动                     | `app/.../startup/BootCompletedReceiver.kt`, `RootServerStarter.kt`, `BootAutoStartNotification.kt`               |
+| 原生启动器                     | `server/src/main/jni/starter.cpp`                                                                                |
+| 历史仓库                      | `app/.../data/history/HistoryRepository.kt`                                                                      |
+| 单记录应用统计                   | `app/.../data/history/RecordAppStatsComputer.kt`                                                                 |
+| 记录详情功耗统计                  | `app/.../data/history/RecordDetailPowerStatsComputer.kt`                                                         |
+| 应用预测统计                    | `app/.../data/history/AppStatsComputer.kt`                                                                       |
+| 场景统计                      | `app/.../data/history/SceneStatsComputer.kt`                                                                     |
+| 放电扫描                      | `app/.../data/history/DischargeRecordScanner.kt`                                                                 |
+| 续航预测                      | `app/.../data/history/BatteryPredictor.kt`                                                                       |
+| 缓存命名与版本                   | `app/.../data/history/HistoryCacheNaming.kt`, `HistoryCacheVersions.kt`                                          |
+| 日志导出                      | `app/.../data/log/LogRepository.kt`                                                                              |
+| 图表组件                      | `app/.../ui/components/charts/PowerCapacityChart.kt`                                                             |
+| 图标缓存                      | `app/.../utils/AppIconMemoryCache.kt`                                                                            |
+| 更新下载/安装                   | `app/.../utils/AppDownloader.kt`                                                                                 |
+| 功率换算/格式化                  | `app/.../utils/FormatUtil.kt`                                                                                    |
+| 更新检查工具（对象名 `UpdateUtils`） | `app/.../utils/UpdateUtil.kt`                                                                                    |
+| 更新通道展示映射                  | `app/.../ui/model/UpdateChannelDisplayName.kt`                                                                   |
+| Server 进程入口               | `server/.../Main.kt`                                                                                             |
+| App 更新监听与自动重启             | `server/.../AppSourceDirObserver.kt`, `server/.../Server.kt`                                                     |
+| Server Binder 实现          | `server/.../Server.kt`                                                                                           |
+| Binder 重推链路               | `server/.../BinderSender.kt`                                                                                     |
+| 通知子进程桥接                   | `server/.../notification/server/ChildServerBridge.kt`                                                            |
+| 通知子进程入口                   | `server/.../notification/server/NotificationServer.kt`                                                           |
+| 本地通知下发                    | `server/.../notification/LocalNotificationUtil.kt`                                                               |
+| FakeContext               | `server/.../fakecontext/FakeContext.kt`                                                                          |
+| 采样循环                      | `server/.../recorder/Monitor.kt`                                                                                 |
+| 采样抽象                      | `server/.../sampler/Sampler.kt`                                                                                  |
+| sysfs/JNI 采样              | `server/.../sampler/SysfsSampler.kt`                                                                             |
+| dumpsys 回退采样              | `server/.../sampler/DumpsysSampler.kt`                                                                           |
+| Server 状态续接协议             | `server/.../stream/StreamProtocol.kt`, `StreamReader.kt`, `StreamWriter.kt`                                      |
+| 写文件                       | `server/.../writer/PowerRecordWriter.kt`                                                                         |
 | JNI 原生代码                  | `server/src/main/jni/power_reader.cpp`, `server/src/main/jni/dump_parser.cpp`, `server/src/main/jni/starter.cpp` |
-| AIDL 接口                   | `server/src/main/aidl/`                                                                            |
-| 共享配置                      | `shared/.../config/`                                                                               |
-| 共享数据模型与解析                 | `shared/.../data/`                                                                                 |
-| 共享配置核心文件                  | `shared/.../config/SharedSettings.kt`, `shared/.../config/ConfigUtil.kt`                           |
-| 同步协议                      | `shared/.../sync/`                                                                                 |
-| 日志工具                      | `shared/.../util/LoggerX.kt`                                                                       |
+| AIDL 接口                   | `server/src/main/aidl/`                                                                                          |
+| 共享配置                      | `shared/.../config/`                                                                                             |
+| 共享数据模型与解析                 | `shared/.../data/`                                                                                               |
+| 共享配置核心文件                  | `shared/.../config/SharedSettings.kt`, `shared/.../config/ConfigUtil.kt`                                         |
+| 同步协议                      | `shared/.../sync/`                                                                                               |
+| 日志工具                      | `shared/.../util/LoggerX.kt`                                                                                     |
 
 ## 架构约定
 
@@ -545,7 +399,7 @@ shared/src/main/
 - 涉及“新增设置项”时，优先使用项目私有 skill：`.agents/skills/add-setting-item/`
 - 涉及历史统计缓存改动时，优先使用项目私有 skill：`.agents/skills/history-stats-cache-change/`
 - 涉及 Compose 页面沉浸或 inset 改动时，优先使用项目私有 skill：`.agents/skills/compose-edge-to-edge-screen/`
-- 优先搜索 `fast-context MCP`
+- 优先搜索 `fast-cxt MCP`
 - 精确关键词搜索再用本地 grep/查找
 - 只修改与当前任务直接相关的文件
 - 如果发现未预期的未提交修改，立即停止并询问用户

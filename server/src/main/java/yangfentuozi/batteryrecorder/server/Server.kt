@@ -50,10 +50,8 @@ class Server internal constructor() : IService.Stub() {
     private var serverSocket: LocalServerSocket? = null
     private val appSourceDirObserver: AppSourceDirObserver
 
-    private var appDataDir: File
     private var appConfigFile: File
     private var appPowerDataDir: File
-    private var shellDataDir: File
     private var shellPowerDataDir: File
 
     override fun stopService() {
@@ -396,7 +394,6 @@ class Server internal constructor() : IService.Stub() {
         val appInfo = getAppInfo(Constants.APP_PACKAGE_NAME)
         Global.appSourceDir = appInfo.sourceDir
         Global.appUid = appInfo.uid
-        appDataDir = File(appInfo.dataDir)
         appConfigFile = File("${appInfo.dataDir}/shared_prefs/${SettingsConstants.PREFS_NAME}.xml")
         appPowerDataDir = File("${appInfo.dataDir}/${Constants.APP_POWER_DATA_PATH}")
 
@@ -406,7 +403,6 @@ class Server internal constructor() : IService.Stub() {
         val sampler = if (SysfsSampler.init(appInfo)) SysfsSampler else DumpsysSampler()
         LoggerX.i(tag, "init: 采样器选择完成, sampler=${sampler::class.java.simpleName}")
 
-        shellDataDir = File(Constants.SHELL_DATA_DIR_PATH)
         shellPowerDataDir =
             File("${Constants.SHELL_DATA_DIR_PATH}/${Constants.SHELL_POWER_DATA_PATH}")
 
