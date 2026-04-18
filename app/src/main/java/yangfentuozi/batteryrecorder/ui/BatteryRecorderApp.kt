@@ -1,5 +1,6 @@
 package yangfentuozi.batteryrecorder.ui
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,10 +17,10 @@ import androidx.navigation.compose.rememberNavController
 import yangfentuozi.batteryrecorder.BuildConfig
 import yangfentuozi.batteryrecorder.R
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
+import yangfentuozi.batteryrecorder.ui.guide.STARTUP_PROMPT_PREFS
 import yangfentuozi.batteryrecorder.ui.dialog.home.UpdateDialog
 import yangfentuozi.batteryrecorder.ui.guide.KEY_STARTUP_GUIDE_COMPLETED_V2
 import yangfentuozi.batteryrecorder.ui.guide.StartupGuideScreen
-import yangfentuozi.batteryrecorder.ui.guide.getStartupGuidePreferences
 import yangfentuozi.batteryrecorder.ui.navigation.BatteryRecorderNavHost
 import yangfentuozi.batteryrecorder.ui.viewmodel.MainViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
@@ -37,13 +38,15 @@ fun BatteryRecorderApp(
     val context = LocalContext.current
     val appSettings by settingsViewModel.appSettings.collectAsState()
     val initialized by settingsViewModel.initialized.collectAsState()
+    val startupPrefs = remember(context.applicationContext) {
+        context.applicationContext.getSharedPreferences(STARTUP_PROMPT_PREFS, Context.MODE_PRIVATE)
+    }
     var hasCheckedUpdateOnStartup by rememberSaveable { mutableStateOf(false) }
     var pendingUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     var showStartupGuide by rememberSaveable { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(settingsViewModel, context) {
         settingsViewModel.init(context)
-        val startupPrefs = getStartupGuidePreferences(context)
         val startupGuideCompleted = startupPrefs.getBoolean(KEY_STARTUP_GUIDE_COMPLETED_V2, false)
         showStartupGuide = !startupGuideCompleted
         LoggerX.v(TAG, "首次启动引导状态: completed=$startupGuideCompleted")
@@ -94,10 +97,9 @@ fun BatteryRecorderApp(
         StartupGuideScreen(
             settingsViewModel = settingsViewModel,
             onGuideCompleted = {
-                getStartupGuidePreferences(context)
-                    .edit {
-                        putBoolean(KEY_STARTUP_GUIDE_COMPLETED_V2, true)
-                    }
+                startupPrefs.edit {
+                    putBoolean(KEY_STARTUP_GUIDE_COMPLETED_V2, true)
+                }
                 LoggerX.i(TAG, "[引导] 首次启动引导已完成")
                 showStartupGuide = false
             }

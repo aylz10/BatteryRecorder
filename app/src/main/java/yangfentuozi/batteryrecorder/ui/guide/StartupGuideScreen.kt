@@ -105,7 +105,7 @@ fun StartupGuideScreen(
     var serviceConnected by rememberSaveable { mutableStateOf(Service.service != null) }
     var showCalibrationDialog by rememberSaveable { mutableStateOf(false) }
     val startupPrefs = remember(context.applicationContext) {
-        getStartupGuidePreferences(context.applicationContext)
+        context.applicationContext.getSharedPreferences(STARTUP_PROMPT_PREFS, Context.MODE_PRIVATE)
     }
     val calibrationDetector = remember(startupPrefs) {
         StartupGuidePowerCalibrationDetector(startupPrefs)
@@ -123,17 +123,19 @@ fun StartupGuideScreen(
                 temp: Int
             ) {
                 scope.launch(Dispatchers.Main.immediate) {
-                    val result = calibrationDetector.onSample(
+                    val previousState = calibrationDetectionState
+                    val calibrationToApply = calibrationDetector.onSample(
                         status = status,
                         power = power,
                         currentCalibrationValue = latestCalibrationValue
                     )
-                    calibrationDetectionState = result.state
-                    result.calibrationToApply?.let { detectedValue ->
+                    val nextState = calibrationDetector.snapshot()
+                    calibrationDetectionState = nextState
+                    calibrationToApply?.let { detectedValue ->
                         LoggerX.i(TAG, "[引导] 自动应用校准倍率: calibration=$detectedValue")
                         settingsViewModel.setCalibrationValue(detectedValue)
                     }
-                    if (result.completedNow) {
+                    if (!previousState.isCompleted && nextState.isCompleted) {
                         LoggerX.i(TAG, "[引导] 电流校准自动探测完成")
                     }
                 }

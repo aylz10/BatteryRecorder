@@ -192,7 +192,6 @@
     <string name="startup_guide_feature_record_desc">Get a complete view of your device\'s battery behavior.</string>
     <string name="startup_guide_feature_calibration_title">Accurate battery life prediction</string>
     <string name="startup_guide_feature_calibration_desc">Use history and weighted algorithms for precise remaining-time estimates.</string>
-    <string name="startup_guide_open_docs">Open full documentation</string>
     <string name="startup_guide_start_title">Start service</string>
     <string name="startup_guide_service_status_title">Connection state</string>
     <string name="startup_guide_service_status_connected">Service connected</string>
@@ -215,9 +214,6 @@
     <string name="startup_guide_calibration_locked_hint">Manual calibration is available only after auto detection completes.</string>
     <string name="startup_guide_adjust_calibration">Adjust calibration manually</string>
 
-    <string name="docs_intro_title">Read the docs before first use</string>
-    <string name="docs_intro_message">Please read the user guide before continuing.\nThe docs cover startup methods, calibration, excluding high-load apps, prediction, history gestures, and chart interactions.</string>
-    <string name="docs_intro_open">Open user guide</string>
     <string name="about_view_source">GitHub</string>
     <string name="about_telegram">Telegram</string>
     <string name="donate_dialog_title">Support ongoing maintenance</string>

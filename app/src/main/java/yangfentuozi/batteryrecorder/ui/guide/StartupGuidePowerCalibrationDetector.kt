@@ -1,6 +1,5 @@
 package yangfentuozi.batteryrecorder.ui.guide
 
-import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
@@ -13,16 +12,6 @@ private const val KEY_STARTUP_POWER_CALIBRATION_DETECTED_V1 = "startup_power_cal
 private const val DISCHARGE_POWER_THRESHOLD = 40_000_000_000L
 private const val APPLY_STABLE_COUNT = 4
 private const val COMPLETE_STABLE_COUNT = 5
-
-/**
- * 读取首次引导相关持久化状态使用的 SharedPreferences。
- *
- * @param context 应用上下文，用于定位首次引导配置文件。
- * @return 返回首次引导共用的 SharedPreferences 实例。
- */
-internal fun getStartupGuidePreferences(context: Context): SharedPreferences {
-    return context.getSharedPreferences(STARTUP_PROMPT_PREFS, Context.MODE_PRIVATE)
-}
 
 internal enum class StartupPowerCalibrationPhase {
     WaitingForService,
@@ -37,12 +26,6 @@ internal data class StartupPowerCalibrationUiState(
     val candidate: Int? = null,
     val stableCount: Int = 0,
     val isCompleted: Boolean = false
-)
-
-internal data class StartupPowerCalibrationProcessResult(
-    val state: StartupPowerCalibrationUiState,
-    val calibrationToApply: Int? = null,
-    val completedNow: Boolean = false
 )
 
 /**
@@ -94,16 +77,16 @@ internal class StartupGuidePowerCalibrationDetector(
      * @param status 当前电池状态。
      * @param power 当前回调里的原始功率值。
      * @param currentCalibrationValue 当前已保存的校准倍率。
-     * @return 返回最新 UI 状态，以及本次是否需要自动写入倍率或写入完成标记。
+     * @return 返回本次是否需要自动写入倍率；最新状态通过 [snapshot] 读取。
      */
     fun onSample(
         status: BatteryStatus,
         power: Long,
         currentCalibrationValue: Int
-    ): StartupPowerCalibrationProcessResult {
+    ): Int? {
         if (state.isCompleted) {
             state = state.copy(lastStatus = status)
-            return StartupPowerCalibrationProcessResult(state = state)
+            return null
         }
 
         if (status != BatteryStatus.Discharging || power == 0L) {
@@ -112,7 +95,7 @@ internal class StartupGuidePowerCalibrationDetector(
                 candidate = null,
                 stableCount = 0
             )
-            return StartupPowerCalibrationProcessResult(state = state)
+            return null
         }
 
         val candidate = inferCalibrationValue(power)
@@ -133,14 +116,9 @@ internal class StartupGuidePowerCalibrationDetector(
             stableCount = nextStableCount,
             isCompleted = completedNow
         )
-        val calibrationToApply = candidate.takeIf {
+        return candidate.takeIf {
             nextStableCount == APPLY_STABLE_COUNT && currentCalibrationValue != it
         }
-        return StartupPowerCalibrationProcessResult(
-            state = state,
-            calibrationToApply = calibrationToApply,
-            completedNow = completedNow
-        )
     }
 
     /**

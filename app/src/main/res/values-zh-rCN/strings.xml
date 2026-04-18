@@ -192,7 +192,6 @@
     <string name="startup_guide_feature_record_desc">全面把控您的设备电量情况</string>
     <string name="startup_guide_feature_calibration_title">精确续航预测</string>
     <string name="startup_guide_feature_calibration_desc">基于历史记录和加权算法，掌握精确的续航时间预测</string>
-    <string name="startup_guide_open_docs">查看完整文档</string>
     <string name="startup_guide_start_title">启动服务</string>
     <string name="startup_guide_service_status_title">连接状态</string>
     <string name="startup_guide_service_status_connected">服务已连接</string>
@@ -215,9 +214,6 @@
     <string name="startup_guide_calibration_locked_hint">自动探测完成后，才可以手动调整校准倍率</string>
     <string name="startup_guide_adjust_calibration">手动调整校准</string>
 
-    <string name="docs_intro_title">首次使用请先看文档</string>
-    <string name="docs_intro_message">请先阅读使用说明，再继续使用应用。\n文档包含启动方式、校准、排除高负载 App、续航预测、历史记录手势和图表交互说明。</string>
-    <string name="docs_intro_open">查看使用文档</string>
     <string name="about_view_source">GitHub</string>
     <string name="about_telegram">Telegram</string>
     <string name="donate_dialog_title">支持项目维护</string>
