@@ -140,7 +140,7 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 ### UI 沉浸与 Insets 链路
 
 - `BaseActivity` 统一调用 `enableEdgeToEdge(...)`，并关闭 `window.isNavigationBarContrastEnforced`
-- 页面级 `Scaffold` 统一通过 `ui/EdgeToEdgeInsets.kt` 中的 `batteryRecorderScaffoldInsets()` 只消费顶部与水平安全区
+- 页面级 `Scaffold` 统一通过 `utils/EdgeToEdgeInsets.kt` 中的 `batteryRecorderScaffoldInsets()` 只消费顶部与水平安全区
 - 底部导航手势区不再交给 `Scaffold` 一刀切处理，而是由页面内容层按需使用 `navigationBarBottomPadding()` 单独追加
 - 当前首页、设置页、历史列表页、记录详情页、预测详情页都已接入上述规则
 - 具体页面改动流程与检查清单已沉淀到项目 skill：`.agents/skills/compose-edge-to-edge-screen/`
@@ -148,8 +148,10 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 ### 记录详情链路
 
 - `HistoryViewModel` 在 `BatteryRecorderNavHost` 中创建单个共享实例，供 `HistoryListScreen` 与 `RecordDetailScreen` 共用
-- `HistoryViewModel` 统一产出 `RecordDetailChartUiState`
-- `RecordDetailScreen` 直接消费 `recordChartUiState`
+- `HistoryViewModel` 当前统一产出 `recordDetail`、`recordChartUiState`、`recordAppDetailEntries` 与 `recordDetailPowerUiState`，分别驱动详情页基础信息、图表、应用明细与功耗摘要
+- `RecordDetailScreen` 当前主要负责页面编排、全屏图表切换、详情页本地图表偏好持久化，以及导出/删除/说明弹窗入口
+- 详情页摘要区、图表区、应用明细区等分区组件统一落在 `ui/screens/history/RecordDetailSections.kt`
+- 记录详情页共享 UI 模型统一定义在 `ui/model/RecordDetailUiModels.kt`
 - `RecordDetailPowerStatsComputer` 负责记录详情页功耗统计
 - 详情页图表偏好通过独立的 `record_detail_chart` SharedPreferences 持久化，不进入业务配置
 - 详情页同时支持：
@@ -265,7 +267,7 @@ docs/
 | App 入口 Composable         | `app/.../ui/BatteryRecorderApp.kt`                                                                               |
 | 首次启动引导页                  | `app/.../ui/guide/StartupGuideScreen.kt`                                                                         |
 | Activity Edge-to-Edge 入口  | `app/.../ui/BaseActivity.kt`                                                                                     |
-| 页面级 Insets 公共方法           | `app/.../ui/EdgeToEdgeInsets.kt`                                                                                 |
+| 页面级 Insets 公共方法           | `app/.../utils/EdgeToEdgeInsets.kt`                                                                              |
 | 导航路由                      | `app/.../ui/navigation/NavRoute.kt`                                                                              |
 | 导航宿主与历史页共享 ViewModel      | `app/.../ui/navigation/BatteryRecorderNavHost.kt`                                                                |
 | 首页                        | `app/.../ui/screens/home/HomeScreen.kt`                                                                          |
@@ -277,12 +279,14 @@ docs/
 | 设置页                       | `app/.../ui/screens/settings/SettingsScreen.kt`                                                                  |
 | 历史列表                      | `app/.../ui/screens/history/HistoryListScreen.kt`                                                                |
 | 记录详情页                     | `app/.../ui/screens/history/RecordDetailScreen.kt`                                                               |
+| 记录详情分区组件                  | `app/.../ui/screens/history/RecordDetailSections.kt`                                                             |
+| 记录详情 UI 模型                | `app/.../ui/model/RecordDetailUiModels.kt`                                                                       |
 | 预测详情页                     | `app/.../ui/screens/prediction/PredictionDetailScreen.kt`                                                        |
 | 预测详情 ViewModel            | `app/.../ui/viewmodel/PredictionDetailViewModel.kt`                                                              |
 | 首页预测/场景卡片                 | `app/.../ui/components/home/PredictionCard.kt`                                                                   |
 | 图表说明弹窗                    | `app/.../ui/dialog/history/ChartGuideDialog.kt`                                                                  |
 | ViewModel                 | `app/.../ui/viewmodel/`                                                                                          |
-| 记录详情图表状态                  | `app/.../ui/viewmodel/HistoryViewModel.kt`                                                                       |
+| 记录详情共享状态模型                | `app/.../ui/model/RecordDetailUiModels.kt`                                                                       |
 | 放电显示映射                    | `app/.../ui/viewmodel/PowerDisplayMapper.kt`                                                                     |
 | IPC Binder 持有             | `app/.../ipc/Service.kt`                                                                                         |
 | Binder 接收 Provider        | `app/.../ipc/BinderProvider.kt`                                                                                  |
@@ -340,7 +344,7 @@ docs/
 - `HistoryRepository` 负责文件 I/O、解析、缓存和统计，不承载 Compose 展示逻辑
 - 首页记录清理入口由 `MainViewModel.cleanupRecords(...)` 驱动；它在清理完成后会刷新首页统计与当前记录展示
 - `HistoryRepository.cleanupRecords(...)` 当前只清理可成功解析统计的普通记录；条件清理不会删除文件名非法或统计解析失败的异常文件
-- 详情页图表状态统一收敛到 `RecordDetailChartUiState`
+- 详情页展示状态统一收敛为 `RecordDetailChartUiState`、`RecordAppDetailUiEntry` 与 `RecordDetailPowerUiState` 三类 UI 模型
 - 图表本地展示偏好不写入业务配置
 - 应用图标请求只基于当前视口包名集合触发
 - 页面级沉浸规则是：`Scaffold` 只吃顶部/水平安全区，底部手势区由内容层自行处理
@@ -401,7 +405,7 @@ docs/
 - 涉及“新增设置项”时，优先使用项目私有 skill：`.agents/skills/add-setting-item/`
 - 涉及历史统计缓存改动时，优先使用项目私有 skill：`.agents/skills/history-stats-cache-change/`
 - 涉及 Compose 页面沉浸或 inset 改动时，优先使用项目私有 skill：`.agents/skills/compose-edge-to-edge-screen/`
-- 优先搜索 `fast-cxt MCP`
+- 优先使用 `mcp__fast_context__fast_context_search`
 - 精确关键词搜索再用本地 grep/查找
 - 只修改与当前任务直接相关的文件
 - 如果发现未预期的未提交修改，立即停止并询问用户
