@@ -13,7 +13,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import yangfentuozi.batteryrecorder.R
 import yangfentuozi.batteryrecorder.appString
-import yangfentuozi.batteryrecorder.data.history.CapacityChange
 import yangfentuozi.batteryrecorder.data.history.HistoryRecord
 import yangfentuozi.batteryrecorder.data.history.HistoryRepository
 import yangfentuozi.batteryrecorder.data.history.HistoryRepository.toFile
@@ -29,6 +28,9 @@ import yangfentuozi.batteryrecorder.shared.data.LineRecord
 import yangfentuozi.batteryrecorder.shared.data.RecordFileNames
 import yangfentuozi.batteryrecorder.shared.data.RecordsFile
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
+import yangfentuozi.batteryrecorder.ui.model.RecordAppDetailUiEntry
+import yangfentuozi.batteryrecorder.ui.model.RecordDetailChartUiState
+import yangfentuozi.batteryrecorder.ui.model.RecordDetailPowerUiState
 import yangfentuozi.batteryrecorder.utils.computeEnergyWh
 import yangfentuozi.batteryrecorder.utils.computePowerW
 import java.io.File
@@ -36,38 +38,6 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 private const val TAG = "HistoryViewModel"
-
-data class RecordDetailChartUiState(
-    // 原始展示点，保留完整时间精度，供原始曲线与辅助信息使用。
-    val points: List<RecordDetailChartPoint> = emptyList(),
-    // 趋势点，基于过滤后的原始点重新分桶生成，只用于趋势曲线。
-    val trendPoints: List<RecordDetailChartPoint> = emptyList(),
-    val minChartTime: Long? = null,
-    val maxChartTime: Long? = null,
-    val maxViewportStartTime: Long? = null,
-    val viewportDurationMs: Long = 0L
-)
-
-data class RecordAppDetailUiEntry(
-    val key: String,
-    val packageName: String?,
-    val appLabel: String,
-    val averagePowerRaw: Double,
-    val averageTempCelsius: Double?,
-    val maxTempCelsius: Double?,
-    val durationMs: Long,
-    val isScreenOff: Boolean
-)
-
-data class RecordDetailPowerUiState(
-    val averagePower: Double,
-    val screenOnAveragePower: Double?,
-    val screenOffAveragePower: Double?,
-    val totalTransferredWh: Double,
-    val screenOnConsumedWh: Double,
-    val screenOffConsumedWh: Double,
-    val capacityChange: CapacityChange
-)
 
 private data class LoadedRecordDetailState(
     val detail: HistoryRecord,
@@ -1024,19 +994,18 @@ class HistoryViewModel : ViewModel() {
 
         val packageManager = context.packageManager
         return statsEntries.map { entry ->
+            val packageName = entry.packageName!!
             val appLabel = resolveAppLabel(
                 packageManager = packageManager,
-                packageName = entry.packageName
+                packageName = packageName
             )
             RecordAppDetailUiEntry(
-                key = entry.packageName.orEmpty(),
-                packageName = entry.packageName,
+                packageName = packageName,
                 appLabel = appLabel,
                 averagePowerRaw = entry.averagePowerRaw,
                 averageTempCelsius = entry.averageTempCelsius,
                 maxTempCelsius = entry.maxTempCelsius,
-                durationMs = entry.totalDurationMs,
-                isScreenOff = entry.isScreenOff
+                durationMs = entry.totalDurationMs
             )
         }
     }

@@ -52,10 +52,10 @@ import yangfentuozi.batteryrecorder.ui.components.charts.PowerCapacityChart
 import yangfentuozi.batteryrecorder.ui.components.charts.PowerCurveMode
 import yangfentuozi.batteryrecorder.ui.components.charts.RecordChartCurveVisibility
 import yangfentuozi.batteryrecorder.ui.components.global.SplicedColumnGroup
+import yangfentuozi.batteryrecorder.ui.model.RecordAppDetailUiEntry
+import yangfentuozi.batteryrecorder.ui.model.RecordDetailChartUiState
+import yangfentuozi.batteryrecorder.ui.model.RecordDetailPowerUiState
 import yangfentuozi.batteryrecorder.ui.theme.AppShape
-import yangfentuozi.batteryrecorder.ui.viewmodel.RecordAppDetailUiEntry
-import yangfentuozi.batteryrecorder.ui.viewmodel.RecordDetailChartUiState
-import yangfentuozi.batteryrecorder.ui.viewmodel.RecordDetailPowerUiState
 import yangfentuozi.batteryrecorder.utils.AppIconMemoryCache
 import yangfentuozi.batteryrecorder.utils.computeEnergyWh
 import yangfentuozi.batteryrecorder.utils.formatDateTime
@@ -595,7 +595,7 @@ internal fun AppDetailSection(
     if (entries.isEmpty()) return
     SplicedColumnGroup(title = stringResource(R.string.history_app_detail_section_title)) {
         entries.forEach { entry ->
-            item(key = entry.key) {
+            item(key = entry.packageName) {
                 RecordAppDetailRow(
                     entry = entry,
                     displayConfig = displayConfig
@@ -787,19 +787,17 @@ private fun RecordAppDetailIcon(entry: RecordAppDetailUiEntry) {
     val packageName = entry.packageName
     var iconBitmap by remember(packageName, iconSizePx) {
         mutableStateOf(
-            packageName?.let { AppIconMemoryCache.get(it, iconSizePx) }
+            AppIconMemoryCache.get(packageName, iconSizePx)
         )
     }
 
     LaunchedEffect(packageName, iconSizePx) {
-        if (entry.isScreenOff) return@LaunchedEffect
-        val resolvedPackageName = packageName ?: return@LaunchedEffect
         if (iconBitmap != null) return@LaunchedEffect
-        if (!AppIconMemoryCache.shouldLoad(resolvedPackageName, iconSizePx)) {
-            iconBitmap = AppIconMemoryCache.get(resolvedPackageName, iconSizePx)
+        if (!AppIconMemoryCache.shouldLoad(packageName, iconSizePx)) {
+            iconBitmap = AppIconMemoryCache.get(packageName, iconSizePx)
             return@LaunchedEffect
         }
-        iconBitmap = AppIconMemoryCache.loadAndCache(context, resolvedPackageName, iconSizePx)
+        iconBitmap = AppIconMemoryCache.loadAndCache(context, packageName, iconSizePx)
     }
 
     Box(
