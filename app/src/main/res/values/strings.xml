@@ -97,6 +97,7 @@
     <string name="settings_root_boot_autostart">Auto start on boot (ROOT)</string>
     <string name="settings_notification_enabled">Realtime power notification</string>
     <string name="settings_notification_compat_mode">Notification compatibility mode</string>
+    <string name="settings_notification_icon_compat_mode">Notification icon compatibility mode</string>
     <string name="settings_screen_off_record">Record when screen is off</string>
     <string name="settings_precise_screen_off_record">Precise screen-off recording</string>
     <string name="settings_precise_screen_off_record_summary">May increase screen-off power draw.</string>
