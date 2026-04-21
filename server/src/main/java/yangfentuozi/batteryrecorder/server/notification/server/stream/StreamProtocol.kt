@@ -9,11 +9,13 @@ object StreamProtocol {
     const val FLAG_STOP = 2
     const val FLAG_CANCEL = 3
     const val FLAG_SET_COMPATIBILITY_MODE = 4
+    const val FLAG_SET_ICON_COMPATIBILITY_MODE = 4
 }
 
 sealed interface NotificationStreamMessage {
     data class Data(val info: NotificationInfo) : NotificationStreamMessage
     data class SetCompatibilityMode(val enabled: Boolean) : NotificationStreamMessage
+    data class SetIconCompatibilityMode(val enabled: Boolean) : NotificationStreamMessage
     data object CancelNotification : NotificationStreamMessage
     data object Stop : NotificationStreamMessage
 }

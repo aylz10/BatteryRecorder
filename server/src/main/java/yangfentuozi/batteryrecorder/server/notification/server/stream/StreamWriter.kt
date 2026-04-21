@@ -49,6 +49,13 @@ class StreamWriter(
         out.flush()
     }
 
+    fun writeIconCompatibilityModeEnabled(enabled: Boolean) {
+        out.writeInt(StreamProtocol.MAGIC)
+        out.writeInt(StreamProtocol.FLAG_SET_ICON_COMPATIBILITY_MODE)
+        out.writeBoolean(enabled)
+        out.flush()
+    }
+
     override fun close() {
         out.close()
     }

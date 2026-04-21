@@ -102,6 +102,7 @@ class Server internal constructor() : IService.Stub() {
             calibrationValue = settings.calibrationValue,
         )
         monitor.setNotificationCompatModeEnabled(settings.notificationCompatModeEnabled)
+        monitor.setNotificationIconCompatModeEnabled(settings.notificationIconCompatModeEnabled)
         monitor.setNotificationEnabled(settings.notificationEnabled)
         monitor.alwaysPollingScreenStatusEnabled = settings.alwaysPollingScreenStatusEnabled
         monitor.recordIntervalMs = settings.recordIntervalMs
