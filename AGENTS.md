@@ -147,9 +147,9 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 
 ### 记录详情链路
 
-- `HistoryViewModel` 在 `BatteryRecorderNavHost` 中创建单个共享实例，供 `HistoryListScreen` 与 `RecordDetailScreen` 共用
-- `HistoryViewModel` 当前统一产出 `recordDetail`、`recordChartUiState`、`recordAppDetailEntries` 与 `recordDetailSummaryUiState`，分别驱动详情页基础信息、图表、应用明细与功耗摘要
-- 历史列表主链路当前已下沉到 `usecase/history/LoadHistoryListUseCase.kt`；`HistoryViewModel` 主要负责列表令牌隔离、瞬时 UI 状态与结果回写，不再直接维护旧版散落的分页实现
+- `HistorySharedViewModel` 在 `BatteryRecorderNavHost` 中创建单个共享实例，供 `HistoryListScreen` 与 `RecordDetailScreen` 共用
+- `HistorySharedViewModel` 当前统一产出 `recordDetail`、`recordChartUiState`、`recordAppDetailEntries` 与 `recordDetailSummaryUiState`，分别驱动详情页基础信息、图表、应用明细与功耗摘要
+- 历史列表主链路当前已下沉到 `usecase/history/LoadHistoryListUseCase.kt`；`HistorySharedViewModel` 主要负责列表令牌隔离、瞬时 UI 状态与结果回写，不再直接维护旧版散落的分页实现
 - `RecordDetailScreen` 当前主要负责页面编排、全屏图表切换、详情页本地图表偏好持久化，以及导出/删除/说明弹窗入口
 - 详情页摘要区、图表区、应用明细区等分区组件统一落在 `ui/screens/history/RecordDetailSections.kt`
 - 记录详情页共享 UI 模型统一定义在 `ui/model/RecordDetailUiModels.kt`
@@ -345,7 +345,7 @@ docs/
 - `MainViewModel` 与 `SettingsViewModel` 在 `BatteryRecorderApp` 创建并向下传递
 - `SettingsViewModel.init(context)` 在应用入口阶段完成 SharedPreferences 初始化
 - `BatteryRecorderApp` 当前通过 `STARTUP_PROMPT_PREFS` + `KEY_STARTUP_GUIDE_COMPLETED_V2` 判断启动引导是否完成；文档引导应保持独立弹窗入口，不要把两类 onboarding 合并成同一条状态链路
-- `HistoryViewModel` 在 `BatteryRecorderNavHost` 创建共享实例，不是“每个历史页面各建一个”
+- `HistorySharedViewModel` 在 `BatteryRecorderNavHost` 创建共享实例，不是“每个历史页面各建一个”
 - `MainViewModel` 当前通过 `usecase/home/LoadHomeStatsUseCase.kt` 编排首页统计、当前记录展示与预测展示加载；不要再把整段首页加载逻辑塞回 `MainViewModel`
 - 首页当前记录卡片、实时曲线与等待态统一由 `MainViewModel.currentRecordUiState` 提供
 - `HomeScreen` 会同时监听 `ACTION_BATTERY_CHANGED` 与 `IRecordListener`；前者提供当前电量/电压，后者提供实时功率与当前记录切段事件

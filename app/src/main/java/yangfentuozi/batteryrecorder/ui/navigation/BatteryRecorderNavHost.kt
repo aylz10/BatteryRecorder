@@ -26,7 +26,7 @@ import yangfentuozi.batteryrecorder.ui.screens.history.RecordDetailScreen
 import yangfentuozi.batteryrecorder.ui.screens.home.HomeScreen
 import yangfentuozi.batteryrecorder.ui.screens.prediction.PredictionDetailScreen
 import yangfentuozi.batteryrecorder.ui.screens.settings.SettingsScreen
-import yangfentuozi.batteryrecorder.ui.viewmodel.HistoryViewModel
+import yangfentuozi.batteryrecorder.ui.viewmodel.HistorySharedViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.MainViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 
@@ -59,7 +59,7 @@ fun BatteryRecorderNavHost(
     settingsViewModel: SettingsViewModel,
     modifier: Modifier = Modifier
 ) {
-    val historyViewModel: HistoryViewModel = viewModel()
+    val historyViewModel: HistorySharedViewModel = viewModel()
 
     NavHost(
         navController = navController,

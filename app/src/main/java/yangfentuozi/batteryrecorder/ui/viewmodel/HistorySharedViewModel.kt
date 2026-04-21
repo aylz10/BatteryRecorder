@@ -33,9 +33,9 @@ import yangfentuozi.batteryrecorder.usecase.history.LoadRecordDetailUseCase
 import yangfentuozi.batteryrecorder.utils.computeEnergyWh
 import kotlin.math.abs
 
-private const val TAG = "HistoryViewModel"
+private const val TAG = "HistorySharedViewModel"
 
-class HistoryViewModel : ViewModel() {
+class HistorySharedViewModel : ViewModel() {
     private val _records = MutableStateFlow<List<HistoryRecord>>(emptyList())
     val records: StateFlow<List<HistoryRecord>> = _records.asStateFlow()
 

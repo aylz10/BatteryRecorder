@@ -63,7 +63,7 @@ import yangfentuozi.batteryrecorder.shared.data.RecordsFile
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import yangfentuozi.batteryrecorder.ui.components.global.SwipeRevealRow
 import yangfentuozi.batteryrecorder.ui.theme.AppShape
-import yangfentuozi.batteryrecorder.ui.viewmodel.HistoryViewModel
+import yangfentuozi.batteryrecorder.ui.viewmodel.HistorySharedViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 import yangfentuozi.batteryrecorder.utils.batteryRecorderScaffoldInsets
 import yangfentuozi.batteryrecorder.utils.formatDurationHours
@@ -90,7 +90,7 @@ private enum class HistoryListLayoutStyle {
 @Composable
 fun HistoryListScreen(
     batteryStatus: BatteryStatus,
-    viewModel: HistoryViewModel = viewModel(),
+    viewModel: HistorySharedViewModel = viewModel(),
     settingsViewModel: SettingsViewModel,
     onNavigateToRecordDetail: (BatteryStatus, String) -> Unit = { _, _ -> }
 ) {

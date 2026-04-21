@@ -49,7 +49,7 @@ import yangfentuozi.batteryrecorder.shared.data.BatteryStatus
 import yangfentuozi.batteryrecorder.shared.data.RecordsFile
 import yangfentuozi.batteryrecorder.ui.components.charts.PowerCurveMode
 import yangfentuozi.batteryrecorder.ui.dialog.history.ChartGuideDialog
-import yangfentuozi.batteryrecorder.ui.viewmodel.HistoryViewModel
+import yangfentuozi.batteryrecorder.ui.viewmodel.HistorySharedViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 import yangfentuozi.batteryrecorder.utils.batteryRecorderScaffoldInsets
 import yangfentuozi.batteryrecorder.utils.formatChargeDetailBatteryInfo
@@ -67,7 +67,7 @@ private const val KEY_SHOW_APP_ICONS = "show_app_icons"
 @Composable
 fun RecordDetailScreen(
     recordsFile: RecordsFile,
-    viewModel: HistoryViewModel = viewModel(),
+    viewModel: HistorySharedViewModel = viewModel(),
     settingsViewModel: SettingsViewModel,
     onNavigateBack: () -> Unit = {}
 ) {
