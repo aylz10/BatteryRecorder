@@ -371,7 +371,12 @@ class Monitor(
         if (componentName == null) {
             LoggerX.v(
                 tag,
-                "前台应用检测: source=$source taskId=${taskInfo.taskId} 当前应用包名=无 是否小窗=未知 是否切换前台应用=否 原因=当前任务没有顶部Activity 当前窗口=$boundsText 最大窗口=$maxBoundsText 旧前台应用=$oldForegroundApp"
+                "前台应用检测: source=%s taskId=%d 当前应用包名=无 是否小窗=未知 是否切换前台应用=否 原因=当前任务没有顶部Activity 当前窗口=%s 最大窗口=%s 旧前台应用=%s",
+                source,
+                taskInfo.taskId,
+                boundsText,
+                maxBoundsText,
+                oldForegroundApp
             )
             return
         }
@@ -379,16 +384,33 @@ class Monitor(
         val className = componentName.className
         val isSmallWindow = isSmallWindow(bounds, maxBounds)
         if (isSmallWindow) {
-            LoggerX.i(
+            LoggerX.d(
                 tag,
-                "前台应用检测: source=$source taskId=${taskInfo.taskId} 当前应用包名=$packageName 当前Activity=$className 是否小窗=是 是否切换前台应用=否 原因=命中小窗规则 当前窗口=$boundsText 最大窗口=$maxBoundsText 旧前台应用=$oldForegroundApp"
+                "前台应用检测: source=%s taskId=%d 当前应用包名=%s 当前Activity=%s 是否小窗=是 是否切换前台应用=否 原因=命中小窗规则 当前窗口=%s 最大窗口=%s 旧前台应用=%s",
+                source,
+                taskInfo.taskId,
+                packageName,
+                className,
+                boundsText,
+                maxBoundsText,
+                oldForegroundApp
             )
             return
         }
         val changedForegroundApp = oldForegroundApp != packageName
         LoggerX.v(
             tag,
-            "前台应用检测: source=$source taskId=${taskInfo.taskId} 当前应用包名=$packageName 当前Activity=$className 是否小窗=否 是否切换前台应用=${if (changedForegroundApp) "是" else "否"} 原因=${if (changedForegroundApp) "命中非小窗且包名发生变化" else "命中非小窗但包名未变化"} 当前窗口=$boundsText 最大窗口=$maxBoundsText 旧前台应用=$oldForegroundApp 新前台应用=$packageName"
+            "前台应用检测: source=%s taskId=%d 当前应用包名=%s 当前Activity=%s 是否小窗=否 是否切换前台应用=%s 原因=%s 当前窗口=%s 最大窗口=%s 旧前台应用=%s 新前台应用=%s",
+            source,
+            taskInfo.taskId,
+            packageName,
+            className,
+            if (changedForegroundApp) "是" else "否",
+            if (changedForegroundApp) "命中非小窗且包名发生变化" else "命中非小窗但包名未变化",
+            boundsText,
+            maxBoundsText,
+            oldForegroundApp,
+            packageName
         )
         if (changedForegroundApp) {
             currForegroundApp = packageName

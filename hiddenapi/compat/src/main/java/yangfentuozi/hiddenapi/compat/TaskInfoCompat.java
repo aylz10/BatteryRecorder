@@ -204,6 +204,8 @@ public final class TaskInfoCompat {
             final Field field = type.getDeclaredField(name);
             field.setAccessible(true);
             return field;
+        } catch (NoSuchFieldException ignored) {
+            return null;
         } catch (Throwable e) {
             Log.w(TAG, "查找隐藏字段失败: " + type.getName() + "#" + name, e);
             return null;
