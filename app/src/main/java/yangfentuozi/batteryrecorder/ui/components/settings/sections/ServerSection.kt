@@ -104,6 +104,14 @@ fun ServerSection(
 
         item {
             M3ESwitchWidget(
+                text = stringResource(R.string.settings_notification_icon_compat_mode),
+                checked = state.notificationIconCompatModeEnabled,
+                onCheckedChange = actions.setNotificationIconCompatModeEnabled
+            )
+        }
+
+        item {
+            M3ESwitchWidget(
                 text = stringResource(R.string.settings_screen_off_record),
                 checked = state.recordScreenOffEnabled,
                 onCheckedChange = actions.setScreenOffRecordEnabled

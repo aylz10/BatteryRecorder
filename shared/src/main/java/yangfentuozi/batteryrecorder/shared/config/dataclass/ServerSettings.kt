@@ -17,6 +17,9 @@ data class ServerSettings(
     /** 是否启用通知兼容模式；开启后每次更新都会新建 Notification.Builder。 */
     val notificationCompatModeEnabled: Boolean =
         SettingsConstants.notificationCompatModeEnabled.def,
+    /** 是否启用通知图标兼容模式；*/
+    val notificationIconCompatModeEnabled: Boolean =
+        SettingsConstants.notificationIconCompatModeEnabled.def,
     /** 是否按双电芯设备处理功率展示与通知。 */
     val dualCellEnabled: Boolean = SettingsConstants.dualCellEnabled.def,
     /** 电流校准值，统一用于功率与 Wh 换算。 */

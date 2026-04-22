@@ -313,6 +313,16 @@ internal object UpdateServerSettingsUseCase {
         message = "[设置] 更新通知兼容模式并准备下发: enabled=$enabled"
     ) { it.copy(notificationCompatModeEnabled = enabled) }
 
+    fun updateNotificationIconCompatModeEnabled(
+        prefs: SharedPreferences,
+        current: ServerSettings,
+        enabled: Boolean
+    ): ServerSettings = update(
+        prefs = prefs,
+        current = current,
+        message = "[设置] 更新通知图标兼容模式并准备下发: enabled=$enabled"
+    ) { it.copy(notificationIconCompatModeEnabled = enabled) }
+
     /**
      * 更新记录间隔。
      *

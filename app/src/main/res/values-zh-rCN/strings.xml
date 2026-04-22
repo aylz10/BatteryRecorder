@@ -96,6 +96,7 @@
     <string name="settings_root_boot_autostart">开机自启（ROOT）</string>
     <string name="settings_notification_enabled">实时功率通知</string>
     <string name="settings_notification_compat_mode">通知兼容模式</string>
+    <string name="settings_notification_icon_compat_mode">通知图标兼容模式</string>
     <string name="settings_screen_off_record">息屏记录</string>
     <string name="settings_precise_screen_off_record">精确息屏记录</string>
     <string name="settings_precise_screen_off_record_summary">可能导致息屏耗电增高</string>
