@@ -73,6 +73,7 @@ object RecordDetailPowerStatsComputer {
         var screenOffConfidentDurationMs = 0L
         var screenOffCapacityDropPercent = 0
         val screenOffShortIntervalPowers = mutableListOf<WeightedPowerSample>()
+        val screenOffLongIntervals = mutableListOf<LongIntervalEnergySample>()
 
         var previous: LineRecord? = null
         records.forEach { current ->
@@ -114,6 +115,11 @@ object RecordDetailPowerStatsComputer {
                     powerMagnitudeRaw = abs(energyRawMs / durationMs.toDouble()),
                     durationMs = durationMs
                 )
+            } else {
+                screenOffLongIntervals += LongIntervalEnergySample(
+                    signedEnergyRawMs = energyRawMs,
+                    durationMs = durationMs
+                )
             }
             screenOffCapacityDropPercent += capacityDelta
         }
@@ -121,12 +127,12 @@ object RecordDetailPowerStatsComputer {
         if (totalDurationMs <= 0L) return null
 
         val screenOffDisplayEnergyRawMs = computeScreenOffDisplayEnergyRawMs(
-            detailType = detailType,
             screenOffDurationMs = screenOffDurationMs,
             screenOffEnergyRawMs = screenOffEnergyRawMs,
             screenOffConfidentDurationMs = screenOffConfidentDurationMs,
             screenOffConfidentEnergyRawMs = screenOffConfidentEnergyRawMs,
-            screenOffShortIntervalPowers = screenOffShortIntervalPowers
+            screenOffShortIntervalPowers = screenOffShortIntervalPowers,
+            screenOffLongIntervals = screenOffLongIntervals
         )
 
         val capacityChange = CapacityChange(
@@ -163,38 +169,54 @@ object RecordDetailPowerStatsComputer {
         val durationMs: Long
     )
 
+    private data class LongIntervalEnergySample(
+        val signedEnergyRawMs: Double,
+        val durationMs: Long
+    )
+
     /**
      * 息屏单值显示优先走“短区间真实积分 + 长区间基线补算”。
      *
      * 当存在 `> 30x` 的息屏长间隔时，直接用端点积分会把短暂唤醒的高功耗扩散到整段长间隔；
-     * 这里改为使用息屏短区间的加权 P30 作为稳健基线功率补算长间隔。
+     * 这里改为使用息屏短区间的加权 P30 作为稳健基线，对每个长区间单独封顶。
+     * 这样只压低被端点峰值抬高的长区间，不会把本来低于基线的长区间整体重写。
      */
     private fun computeScreenOffDisplayEnergyRawMs(
-        detailType: BatteryStatus,
         screenOffDurationMs: Long,
         screenOffEnergyRawMs: Double,
         screenOffConfidentDurationMs: Long,
         screenOffConfidentEnergyRawMs: Double,
-        screenOffShortIntervalPowers: List<WeightedPowerSample>
+        screenOffShortIntervalPowers: List<WeightedPowerSample>,
+        screenOffLongIntervals: List<LongIntervalEnergySample>
     ): Double {
         if (screenOffDurationMs <= 0L) return 0.0
         if (screenOffConfidentDurationMs <= 0L) return screenOffEnergyRawMs
 
-        val longGapDurationMs = screenOffDurationMs - screenOffConfidentDurationMs
-        if (longGapDurationMs <= 0L) return screenOffConfidentEnergyRawMs
+        if (screenOffLongIntervals.isEmpty()) return screenOffConfidentEnergyRawMs
 
         val baselinePowerRaw = weightedPercentile(
             samples = screenOffShortIntervalPowers,
             percentile = SCREEN_OFF_BASELINE_PERCENTILE
         ) ?: return screenOffEnergyRawMs
 
-        val expectedSign = when (detailType) {
-            BatteryStatus.Discharging -> -1.0
-            BatteryStatus.Charging -> 1.0
-            else -> return screenOffEnergyRawMs
+        var cappedLongIntervalEnergyRawMs = 0.0
+        screenOffLongIntervals.forEach { interval ->
+            val cappedMagnitudeRawMs = minOf(
+                abs(interval.signedEnergyRawMs),
+                baselinePowerRaw * interval.durationMs
+            )
+            cappedLongIntervalEnergyRawMs += observedEnergySign(interval.signedEnergyRawMs) *
+                cappedMagnitudeRawMs
         }
-        return screenOffConfidentEnergyRawMs + expectedSign * baselinePowerRaw * longGapDurationMs
+        return screenOffConfidentEnergyRawMs + cappedLongIntervalEnergyRawMs
     }
+
+    private fun observedEnergySign(signedEnergyRawMs: Double): Double =
+        when {
+            signedEnergyRawMs > 0.0 -> 1.0
+            signedEnergyRawMs < 0.0 -> -1.0
+            else -> 0.0
+        }
 
     /**
      * 按区间时长加权计算功率分位数。
