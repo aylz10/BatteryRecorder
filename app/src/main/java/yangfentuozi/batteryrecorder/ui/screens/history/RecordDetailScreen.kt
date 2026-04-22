@@ -1,7 +1,6 @@
 package yangfentuozi.batteryrecorder.ui.screens.history
 
 import android.app.Activity
-import android.graphics.Bitmap
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
@@ -65,11 +64,11 @@ import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import yangfentuozi.batteryrecorder.utils.appendRecordDetailScreenshotHeader
 import yangfentuozi.batteryrecorder.utils.batteryRecorderScaffoldInsets
-import yangfentuozi.batteryrecorder.utils.buildRecordDetailScreenshotFileName
 import yangfentuozi.batteryrecorder.utils.captureLongScreenshot
 import yangfentuozi.batteryrecorder.utils.formatChargeDetailBatteryInfo
 import yangfentuozi.batteryrecorder.utils.navigationBarBottomPadding
 import yangfentuozi.batteryrecorder.utils.readDeviceBatteryCapacityMah
+import yangfentuozi.batteryrecorder.utils.buildRecordDetailScreenshotFileName
 import yangfentuozi.batteryrecorder.utils.saveBitmapToPictures
 
 private const val RECORD_DETAIL_CHART_PREFS_NAME = "record_detail_chart"
@@ -234,33 +233,35 @@ fun RecordDetailScreen(
                             onClick = {
                                 coroutineScope.launch {
                                     isSavingLongScreenshot = true
-                                    var screenshotBitmap: Bitmap? = null
                                     try {
-                                        screenshotBitmap = captureLongScreenshot(
+                                        val screenshotBitmap = captureLongScreenshot(
                                             scrollState = detailScrollState,
                                             viewportSize = longScreenshotViewportSize,
                                             graphicsLayer = longScreenshotLayer,
                                             backgroundColorArgb = screenshotBackgroundColor.toArgb()
                                         )
-                                        val capturedBitmap = screenshotBitmap
-                                            ?: error("记录详情长截图生成失败")
-                                        val decoratedBitmap = appendRecordDetailScreenshotHeader(
-                                            context = context,
-                                            sourceBitmap = capturedBitmap,
-                                            backgroundColorArgb = screenshotBackgroundColor.toArgb(),
-                                            textColorArgb = screenshotTextColor.toArgb()
-                                        )
-                                        if (decoratedBitmap !== capturedBitmap) {
-                                            screenshotBitmap = decoratedBitmap
-                                            capturedBitmap.recycle()
-                                        }
-                                        withContext(Dispatchers.IO) {
-                                            saveBitmapToPictures(
+                                        try {
+                                            val decoratedBitmap = appendRecordDetailScreenshotHeader(
                                                 context = context,
-                                                displayName = buildRecordDetailScreenshotFileName(recordsFile),
-                                                bitmap = screenshotBitmap
-                                                    ?: error("记录详情长截图头部生成失败")
+                                                sourceBitmap = screenshotBitmap,
+                                                backgroundColorArgb = screenshotBackgroundColor.toArgb(),
+                                                textColorArgb = screenshotTextColor.toArgb()
                                             )
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    saveBitmapToPictures(
+                                                        context = context,
+                                                        displayName = buildRecordDetailScreenshotFileName(recordsFile),
+                                                        bitmap = decoratedBitmap
+                                                    )
+                                                }
+                                            } finally {
+                                                if (decoratedBitmap !== screenshotBitmap) {
+                                                    decoratedBitmap.recycle()
+                                                }
+                                            }
+                                        } finally {
+                                            screenshotBitmap.recycle()
                                         }
                                         Toast.makeText(
                                             context,
@@ -279,7 +280,6 @@ fun RecordDetailScreen(
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     } finally {
-                                        screenshotBitmap?.recycle()
                                         isSavingLongScreenshot = false
                                     }
                                 }
