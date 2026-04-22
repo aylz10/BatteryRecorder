@@ -40,6 +40,8 @@ class NotificationServer {
                     NotificationStreamMessage.CancelNotification -> notificationUtil.cancelNotification()
                     is NotificationStreamMessage.SetCompatibilityMode ->
                         notificationUtil.setCompatibilityModeEnabled(message.enabled)
+                    is NotificationStreamMessage.SetIconCompatibilityMode ->
+                        notificationUtil.setIconCompatibilityModeEnabled(message.enabled)
                     NotificationStreamMessage.Stop -> {
                         isStopped = true
                         Handlers.main.post { exitProcess(0) }

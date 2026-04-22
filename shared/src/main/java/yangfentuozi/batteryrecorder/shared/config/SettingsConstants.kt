@@ -37,6 +37,13 @@ object SettingsConstants {
             def = false
         )
 
+    /** 是否启用通知图标兼容模式 */
+    val notificationIconCompatModeEnabled =
+        BooleanConfigItem(
+            key = "notification_icon_compat_mode_enabled",
+            def = false
+        )
+
     /** 是否启用双电芯模式 */
     val dualCellEnabled =
         BooleanConfigItem(

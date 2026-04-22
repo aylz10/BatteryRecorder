@@ -108,6 +108,8 @@ class Monitor(
     private var notificationEnabled = SettingsConstants.notificationEnabled.def
     @Volatile
     private var notificationCompatModeEnabled = SettingsConstants.notificationCompatModeEnabled.def
+    @Volatile
+    private var notificationIconCompatModeEnabled = SettingsConstants.notificationIconCompatModeEnabled.def
 
     private var mAlwaysPollingScreenStatusEnabled: Boolean =
         SettingsConstants.alwaysPollingScreenStatusEnabled.def
@@ -452,12 +454,16 @@ class Monitor(
             notificationUtil = if (Os.getuid() == 0) {
                 RemoteNotificationUtil(
                     bridge = bridge!!,
-                    initialCompatibilityModeEnabled = notificationCompatModeEnabled
+                        notificationCompatModeEnabled,
+                    notificationIconCompatModeEnabled
                 )
             }
             else {
                 ServiceManagerCompat.waitService("notification")
-                LocalNotificationUtil(notificationCompatModeEnabled)
+                LocalNotificationUtil(
+                    notificationCompatModeEnabled,
+                    notificationIconCompatModeEnabled
+                )
             }
         }
     }
@@ -485,6 +491,18 @@ class Monitor(
             )
             notificationCompatModeEnabled = enabled
             notificationUtil?.setCompatibilityModeEnabled(enabled)
+        }
+    }
+
+    fun setNotificationIconCompatModeEnabled(enabled: Boolean) {
+        lock.withLock {
+            if (notificationIconCompatModeEnabled == enabled) return
+            LoggerX.d(
+                tag,
+                "setNotificationIconCompatModeEnabled: $notificationIconCompatModeEnabled -> $enabled"
+            )
+            notificationIconCompatModeEnabled = enabled
+            notificationUtil?.setIconCompatibilityModeEnabled(enabled)
         }
     }
 

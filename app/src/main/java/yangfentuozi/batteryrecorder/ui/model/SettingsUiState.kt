@@ -37,6 +37,8 @@ data class SettingsUiState(
     val notificationEnabled: Boolean = ServerSettings().notificationEnabled,
     /** 通知兼容模式 */
     val notificationCompatModeEnabled: Boolean = ServerSettings().notificationCompatModeEnabled,
+    /** 通知图标兼容模式 */
+    val notificationIconCompatModeEnabled: Boolean = ServerSettings().notificationIconCompatModeEnabled,
     /** 串联双电芯 */
     val dualCellEnabled: Boolean = ServerSettings().dualCellEnabled,
     /** 电流校准 */

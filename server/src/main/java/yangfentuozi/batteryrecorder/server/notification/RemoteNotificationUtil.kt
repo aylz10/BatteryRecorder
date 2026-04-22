@@ -1,14 +1,15 @@
 package yangfentuozi.batteryrecorder.server.notification
 
 import yangfentuozi.batteryrecorder.server.notification.server.ChildServerBridge
+import yangfentuozi.batteryrecorder.shared.config.SettingsConstants
 
 class RemoteNotificationUtil(
     private val bridge: ChildServerBridge,
-    initialCompatibilityModeEnabled: Boolean
+    private var compatibilityModeEnabled: Boolean = SettingsConstants.notificationCompatModeEnabled.def,
+    private var iconCompatibilityModeEnabled: Boolean = SettingsConstants.notificationIconCompatModeEnabled.def
 ) : NotificationUtil {
 
     private val lock = Any()
-    private var compatibilityModeEnabled = initialCompatibilityModeEnabled
 
     init {
         bridge.onWriterConnected = { writer ->
@@ -34,6 +35,14 @@ class RemoteNotificationUtil(
             if (compatibilityModeEnabled == enabled) return
             compatibilityModeEnabled = enabled
             bridge.writer?.writeCompatibilityModeEnabled(enabled)
+        }
+    }
+
+    override fun setIconCompatibilityModeEnabled(enabled: Boolean) {
+        synchronized(lock) {
+            if (iconCompatibilityModeEnabled == enabled) return
+            iconCompatibilityModeEnabled = enabled
+            bridge.writer?.writeIconCompatibilityModeEnabled(enabled)
         }
     }
 

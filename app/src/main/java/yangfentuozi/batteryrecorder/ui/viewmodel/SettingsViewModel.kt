@@ -210,6 +210,16 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    fun setNotificationIconCompatModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            _serverSettings.value = UpdateServerSettingsUseCase.updateNotificationIconCompatModeEnabled(
+                prefs = prefs,
+                current = _serverSettings.value,
+                enabled = enabled
+            )
+        }
+    }
+
     fun setRecordIntervalMs(value: Long) {
         viewModelScope.launch {
             _serverSettings.value = UpdateServerSettingsUseCase.updateRecordIntervalMs(

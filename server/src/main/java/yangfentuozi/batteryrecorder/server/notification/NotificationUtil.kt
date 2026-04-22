@@ -8,6 +8,7 @@ interface NotificationUtil {
      * @return 无。
      */
     fun setCompatibilityModeEnabled(enabled: Boolean)
+    fun setIconCompatibilityModeEnabled(enabled: Boolean)
 
     fun updateNotification(info: NotificationInfo)
     fun cancelNotification()

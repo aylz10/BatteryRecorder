@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.drawable.Icon
 import android.os.RemoteException
 import android.os.ServiceManager
@@ -16,8 +17,10 @@ import yangfentuozi.hiddenapi.compat.NotificationManagerCompat
 import java.util.Locale
 
 class LocalNotificationUtil(
-    initialCompatibilityModeEnabled: Boolean =
-        SettingsConstants.notificationCompatModeEnabled.def
+    @Volatile
+    private var compatibilityModeEnabled: Boolean = SettingsConstants.notificationCompatModeEnabled.def,
+    @Volatile
+    private var iconCompatibilityModeEnabled: Boolean = SettingsConstants.notificationIconCompatModeEnabled.def
 ) : NotificationUtil {
 
     private val tag = "LocalNotificationUtil"
@@ -30,8 +33,6 @@ class LocalNotificationUtil(
 
     @Volatile
     private var channelCreated = false
-    @Volatile
-    private var compatibilityModeEnabled = initialCompatibilityModeEnabled
 
     init {
         synchronized(lock) {
@@ -69,6 +70,17 @@ class LocalNotificationUtil(
             if (compatibilityModeEnabled == enabled) return
             LoggerX.i(tag, "setCompatibilityModeEnabled: $compatibilityModeEnabled -> $enabled")
             compatibilityModeEnabled = enabled
+        }
+    }
+
+    override fun setIconCompatibilityModeEnabled(enabled: Boolean) {
+        synchronized(lock) {
+            if (iconCompatibilityModeEnabled == enabled) return
+            LoggerX.i(
+                tag,
+                "setIconCompatibilityModeEnabled: $iconCompatibilityModeEnabled -> $enabled"
+            )
+            iconCompatibilityModeEnabled = enabled
         }
     }
 
@@ -112,7 +124,14 @@ class LocalNotificationUtil(
         val builder = if (compatibilityModeEnabled) createBaseBuilder() else reusableBuilder
         return builder.setContentText(contentText)
             .setTicker(contentText)
-            .build()
+            .build().apply {
+                if (iconCompatibilityModeEnabled) {
+                    contentView = null
+                    bigContentView = null
+                    headsUpContentView = null
+                    color = Color.TRANSPARENT
+                }
+            }
     }
 
     private val cachedIcon = buildSmallIcon()
