@@ -63,6 +63,7 @@ import yangfentuozi.batteryrecorder.ui.dialog.history.ChartGuideDialog
 import yangfentuozi.batteryrecorder.ui.viewmodel.HistorySharedViewModel
 import yangfentuozi.batteryrecorder.ui.viewmodel.SettingsViewModel
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
+import yangfentuozi.batteryrecorder.utils.appendRecordDetailScreenshotHeader
 import yangfentuozi.batteryrecorder.utils.batteryRecorderScaffoldInsets
 import yangfentuozi.batteryrecorder.utils.buildRecordDetailScreenshotFileName
 import yangfentuozi.batteryrecorder.utils.captureLongScreenshot
@@ -107,6 +108,7 @@ fun RecordDetailScreen(
     val detailScrollState = rememberScrollState()
     val longScreenshotLayer = rememberGraphicsLayer()
     val screenshotBackgroundColor = MaterialTheme.colorScheme.background
+    val screenshotTextColor = MaterialTheme.colorScheme.onBackground
     val deleteSuccessMessage = stringResource(R.string.toast_delete_success)
     val saveImageSuccessMessage = stringResource(R.string.toast_save_image_success)
     val saveImageFailedMessage = stringResource(R.string.toast_save_image_failed)
@@ -241,11 +243,23 @@ fun RecordDetailScreen(
                                             backgroundColorArgb = screenshotBackgroundColor.toArgb()
                                         )
                                         val capturedBitmap = screenshotBitmap
+                                            ?: error("记录详情长截图生成失败")
+                                        val decoratedBitmap = appendRecordDetailScreenshotHeader(
+                                            context = context,
+                                            sourceBitmap = capturedBitmap,
+                                            backgroundColorArgb = screenshotBackgroundColor.toArgb(),
+                                            textColorArgb = screenshotTextColor.toArgb()
+                                        )
+                                        if (decoratedBitmap !== capturedBitmap) {
+                                            screenshotBitmap = decoratedBitmap
+                                            capturedBitmap.recycle()
+                                        }
                                         withContext(Dispatchers.IO) {
                                             saveBitmapToPictures(
                                                 context = context,
                                                 displayName = buildRecordDetailScreenshotFileName(recordsFile),
-                                                bitmap = capturedBitmap
+                                                bitmap = screenshotBitmap
+                                                    ?: error("记录详情长截图头部生成失败")
                                             )
                                         }
                                         Toast.makeText(
