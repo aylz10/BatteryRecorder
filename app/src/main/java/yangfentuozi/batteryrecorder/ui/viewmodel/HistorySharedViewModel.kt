@@ -680,7 +680,7 @@ class HistorySharedViewModel : ViewModel() {
             1.0
         }
         val totalTransferredWh = computeEnergyWh(
-            rawPower = stats.totalConfidentEnergyRawMs,
+            rawPower = stats.totalDisplayEnergyRawMs,
             durationMs = 1L,
             dualCellEnabled = dualCellEnabled,
             calibrationValue = calibrationValue
