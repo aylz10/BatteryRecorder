@@ -692,7 +692,7 @@ class HistorySharedViewModel : ViewModel() {
             calibrationValue = calibrationValue
         )
         val screenOffConsumedWh = computeEnergyWh(
-            rawPower = stats.screenOffDisplayEnergyRawMs,
+            rawPower = stats.screenOffWhDisplayEnergyRawMs,
             durationMs = 1L,
             dualCellEnabled = dualCellEnabled,
             calibrationValue = calibrationValue

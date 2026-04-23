@@ -24,8 +24,13 @@ data class CapacityChange(
 /**
  * 详情页功耗统计结果。
  *
- * 统计器只负责提供原始功率均值、时长拆分与电量变化拆分；
- * 最终展示层再统一把原始功率换算为 Wh。
+ * 统计器只负责提供原始功率均值、时长拆分与电量变化拆分。
+ *
+ * 约束：
+ * 1. `screenOffDisplayEnergyRawMs` 只服务“息屏平均功耗”的展示单值，
+ *    它允许使用息屏短区间基线对长间隔做稳健修正。
+ * 2. `screenOffWhDisplayEnergyRawMs` 专门服务息屏 Wh 展示，沿用详情页原有的长间隔补算口径，
+ *    避免修正平均功耗后连带改变用户已经认可的瓦时显示。
  */
 data class RecordDetailPowerStats(
     val averagePowerRaw: Double,
@@ -35,6 +40,7 @@ data class RecordDetailPowerStats(
     val screenOnConfidentEnergyRawMs: Double,
     val screenOffConfidentEnergyRawMs: Double,
     val screenOffDisplayEnergyRawMs: Double,
+    val screenOffWhDisplayEnergyRawMs: Double,
     val totalDurationMs: Long,
     val screenOnDurationMs: Long,
     val screenOffDurationMs: Long,
@@ -134,6 +140,14 @@ object RecordDetailPowerStatsComputer {
             screenOffShortIntervalPowers = screenOffShortIntervalPowers,
             screenOffLongIntervals = screenOffLongIntervals
         )
+        val screenOffWhDisplayEnergyRawMs = computeScreenOffWhDisplayEnergyRawMs(
+            detailType = detailType,
+            screenOffDurationMs = screenOffDurationMs,
+            screenOffEnergyRawMs = screenOffEnergyRawMs,
+            screenOffConfidentDurationMs = screenOffConfidentDurationMs,
+            screenOffConfidentEnergyRawMs = screenOffConfidentEnergyRawMs,
+            screenOffShortIntervalPowers = screenOffShortIntervalPowers
+        )
 
         val capacityChange = CapacityChange(
             totalPercent = screenOffCapacityDropPercent + screenOnCapacityDropPercent,
@@ -152,6 +166,7 @@ object RecordDetailPowerStatsComputer {
             screenOnConfidentEnergyRawMs = screenOnConfidentEnergyRawMs,
             screenOffConfidentEnergyRawMs = screenOffConfidentEnergyRawMs,
             screenOffDisplayEnergyRawMs = screenOffDisplayEnergyRawMs,
+            screenOffWhDisplayEnergyRawMs = screenOffWhDisplayEnergyRawMs,
             totalDurationMs = totalDurationMs,
             screenOnDurationMs = screenOnDurationMs,
             screenOffDurationMs = screenOffDurationMs,
@@ -209,6 +224,39 @@ object RecordDetailPowerStatsComputer {
                 cappedMagnitudeRawMs
         }
         return screenOffConfidentEnergyRawMs + cappedLongIntervalEnergyRawMs
+    }
+
+    /**
+     * 息屏 Wh 展示沿用详情页原有的长间隔补算口径。
+     *
+     * 这里刻意保留旧行为，只为恢复历史上已经被用户接受的瓦时显示，
+     * 不参与“息屏平均功耗”单值修正。
+     */
+    private fun computeScreenOffWhDisplayEnergyRawMs(
+        detailType: BatteryStatus,
+        screenOffDurationMs: Long,
+        screenOffEnergyRawMs: Double,
+        screenOffConfidentDurationMs: Long,
+        screenOffConfidentEnergyRawMs: Double,
+        screenOffShortIntervalPowers: List<WeightedPowerSample>
+    ): Double {
+        if (screenOffDurationMs <= 0L) return 0.0
+        if (screenOffConfidentDurationMs <= 0L) return screenOffEnergyRawMs
+
+        val longGapDurationMs = screenOffDurationMs - screenOffConfidentDurationMs
+        if (longGapDurationMs <= 0L) return screenOffConfidentEnergyRawMs
+
+        val baselinePowerRaw = weightedPercentile(
+            samples = screenOffShortIntervalPowers,
+            percentile = SCREEN_OFF_BASELINE_PERCENTILE
+        ) ?: return screenOffEnergyRawMs
+
+        val expectedSign = when (detailType) {
+            BatteryStatus.Discharging -> -1.0
+            BatteryStatus.Charging -> 1.0
+            else -> return screenOffEnergyRawMs
+        }
+        return screenOffConfidentEnergyRawMs + expectedSign * baselinePowerRaw * longGapDurationMs
     }
 
     private fun observedEnergySign(signedEnergyRawMs: Double): Double =
