@@ -57,7 +57,7 @@ object RecordDetailPowerStatsComputer {
      *
      * @param detailType 当前详情页记录类型，只接受充电和放电。
      * @param recordIntervalMs 当前详情页采样间隔配置，超过 `30x` 的区间视为长间隔；
-     * 息屏 Wh 会基于 confident 样本数量和时长在 `P30~P50` 之间选取弱外推基线。
+     * 息屏 Wh 会基于 confident 样本数量、时长和覆盖率在 `P30~P50` 之间选取弱外推基线。
      * @param records 已通过解析得到的有效记录点列表，要求时间戳按文件原始顺序传入
      * @return 返回总平均、亮屏平均、息屏平均三项原始功率，以及总/亮屏/息屏时长和电量变化拆分；若有效区间不足则返回 null
      */
@@ -181,7 +181,7 @@ object RecordDetailPowerStatsComputer {
      * 设计依据：
      * 纯 confident 积分会系统性低估长间隔记录，而旧版整段补算又会系统性高估。
      * 这里对长间隔只做覆盖率缩放后的弱外推，且基线分位会随 confident 质量
-     * 在 `P30~P50` 之间自适应变化：
+     * 在 `P30~P50` 之间自适应变化。覆盖率越低，允许使用的基线分位越保守：
      * `confidentEnergy + baselinePower * longGapDuration * confidentCoverage`。
      *
      * @param screenOffDurationMs 当前记录的总息屏时长。
@@ -206,7 +206,9 @@ object RecordDetailPowerStatsComputer {
 
         val confidenceScore = computeScreenOffConfidenceScore(
             screenOffConfidentDurationMs = screenOffConfidentDurationMs,
-            screenOffConfidentSampleCount = screenOffShortIntervalPowers.size
+            screenOffConfidentSampleCount = screenOffShortIntervalPowers.size,
+            screenOffConfidentCoverage = screenOffConfidentDurationMs.toDouble() /
+                screenOffDurationMs.toDouble()
         )
         val baselinePercentile = interpolatePercentile(
             minPercentile = SCREEN_OFF_WH_BASELINE_MIN_PERCENTILE,
@@ -235,15 +237,18 @@ object RecordDetailPowerStatsComputer {
      * 单纯依赖一条记录的高基线很容易被短样本带偏，因此这里同时要求：
      * 1. confident 息屏时长足够长；
      * 2. confident 息屏样本数量足够多。
-     * 两者都足够时才允许息屏 Wh 的长间隔弱外推基线向更高分位靠近。
+     * 3. confident 息屏覆盖率足够高。
+     * 三者都足够时才允许息屏 Wh 的长间隔弱外推基线向更高分位靠近。
      *
      * @param screenOffConfidentDurationMs 当前记录中落在 confident 阈值内的息屏时长。
      * @param screenOffConfidentSampleCount 当前记录中落在 confident 阈值内的息屏样本数量。
+     * @param screenOffConfidentCoverage 当前记录中 confident 息屏时长占总息屏时长的比例。
      * @return 返回 `0.0~1.0` 的置信度分数；越接近 `1.0` 代表越可以信任更高的弱外推基线。
      */
     private fun computeScreenOffConfidenceScore(
         screenOffConfidentDurationMs: Long,
-        screenOffConfidentSampleCount: Int
+        screenOffConfidentSampleCount: Int,
+        screenOffConfidentCoverage: Double
     ): Double {
         if (screenOffConfidentDurationMs <= 0L || screenOffConfidentSampleCount <= 0) return 0.0
         val durationScore = (
@@ -254,7 +259,8 @@ object RecordDetailPowerStatsComputer {
             screenOffConfidentSampleCount.toDouble() /
                 SCREEN_OFF_HIGH_CONFIDENCE_SAMPLE_COUNT.toDouble()
             ).coerceIn(0.0, 1.0)
-        return kotlin.math.sqrt(durationScore * sampleScore)
+        val coverageScore = screenOffConfidentCoverage.coerceIn(0.0, 1.0)
+        return kotlin.math.sqrt(durationScore * sampleScore) * kotlin.math.sqrt(coverageScore)
     }
 
     /**

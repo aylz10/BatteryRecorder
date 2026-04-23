@@ -206,7 +206,7 @@ Sampler -> SysfsSampler / DumpsysSampler -> Monitor -> PowerRecordWriter -> CSV
 
 - `RecordAppStatsComputer` 负责单条放电记录内的应用维度统计
 - `RecordDetailPowerStatsComputer` 负责记录详情页功耗统计
-- `RecordDetailPowerStatsComputer` 当前仍基于真实采样区间计算亮屏/息屏时长与能量；详情页总功耗、亮屏功耗、息屏功耗都统一由各自展示能量除以对应时长回推；其中亮屏展示能量当前等于亮屏 confident 能量，息屏展示能量对长间隔使用覆盖率缩放后的弱外推
+- `RecordDetailPowerStatsComputer` 当前仍基于真实采样区间计算亮屏/息屏时长与能量；详情页总功耗、亮屏功耗、息屏功耗都统一由各自展示能量除以对应时长回推；其中亮屏展示能量当前等于亮屏 confident 能量，息屏展示能量对长间隔使用覆盖率缩放后的弱外推，且弱外推基线分位同时受 confident 时长、样本数与覆盖率约束
 - 放电记录详情的“应用切换次数”当前由 `LoadRecordDetailUseCase` 在详情加载阶段基于 `LineRecord` 序列统计；统计口径是相邻有效采样点前后台包名都非空且发生变化时计 1 次
 - 记录详情缓存命中时，必须校验缓存内 `sourceLastModified` 与源文件 `lastModified()` 一致
 
