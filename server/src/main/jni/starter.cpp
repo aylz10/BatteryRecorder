@@ -15,7 +15,7 @@
 
 #define PACKAGE_NAME "yangfentuozi.batteryrecorder"
 #define SERVER_NAME "batteryrecorder_server"
-#define SERVER_CLASS_PATH "yangfentuozi.batteryrecorder.server.Main"
+#define SERVER_CLASS_PATH "yangfentuozi.batteryrecorder.server.daemon.Main"
 
 static char *trim(char *str) {
     if (str == nullptr) return nullptr;

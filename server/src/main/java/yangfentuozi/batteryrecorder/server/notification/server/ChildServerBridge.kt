@@ -2,7 +2,7 @@ package yangfentuozi.batteryrecorder.server.notification.server
 
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
-import yangfentuozi.batteryrecorder.server.Main
+import yangfentuozi.batteryrecorder.server.daemon.Main
 import yangfentuozi.batteryrecorder.server.notification.server.stream.StreamWriter
 import yangfentuozi.batteryrecorder.shared.util.Handlers
 import yangfentuozi.batteryrecorder.shared.util.LoggerX

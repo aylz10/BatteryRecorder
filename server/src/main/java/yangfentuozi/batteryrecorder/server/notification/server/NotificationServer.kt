@@ -2,22 +2,21 @@ package yangfentuozi.batteryrecorder.server.notification.server
 
 import android.net.LocalServerSocket
 import android.net.LocalSocket
-import android.os.Looper
 import android.system.Os
 import yangfentuozi.batteryrecorder.server.notification.LocalNotificationUtil
 import yangfentuozi.batteryrecorder.server.notification.NotificationUtil
 import yangfentuozi.batteryrecorder.server.notification.server.stream.NotificationStreamMessage
 import yangfentuozi.batteryrecorder.server.notification.server.stream.StreamReader
 import yangfentuozi.batteryrecorder.shared.config.dataclass.ServerSettings
-import yangfentuozi.batteryrecorder.shared.util.Handlers
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
-import yangfentuozi.hiddenapi.compat.ServiceManagerCompat
 import java.io.IOException
 import kotlin.system.exitProcess
 
 private const val TAG = "NotificationServer"
 
-class NotificationServer {
+class NotificationServer(
+    stop: () -> Unit = { exitProcess(0) },
+){
 
     @Volatile
     var isStopped = false
@@ -43,7 +42,7 @@ class NotificationServer {
                         message.settings?.let { syncSettings(it) }
                     NotificationStreamMessage.Stop -> {
                         isStopped = true
-                        Handlers.main.post { exitProcess(0) }
+                        stop()
                     }
                 }
             }
@@ -56,7 +55,7 @@ class NotificationServer {
         reader = null
         socket = null
         notificationUtil.cancelNotification()
-        exitProcess(0)
+        stop()
     }, "ServerSocketThread")
 
     init {
@@ -64,32 +63,10 @@ class NotificationServer {
             TAG,
             "init: NotificationServer 初始化开始, uid=${Os.getuid()}"
         )
-        if (Looper.getMainLooper() == null) {
-            @Suppress("DEPRECATION")
-            Looper.prepareMainLooper()
-        }
-        Handlers.initMainThread()
-
-        if (Os.getuid() != 2000) {
-            LoggerX.i(TAG, "init: uid 不为 2000, 执行降权")
-            @Suppress("DEPRECATION")
-            Os.setuid(2000)
-        }
-
-        LoggerX.i(TAG, "init: 等待 notification, activity 服务")
-        ServiceManagerCompat.waitService("notification")
-        ServiceManagerCompat.waitService("activity")
         notificationUtil = LocalNotificationUtil()
 
         LoggerX.i(TAG, "init: 创建 LocalServerSocket 通信服务")
         serverSocket = LocalServerSocket(SOCKET_NAME)
-
-        Runtime.getRuntime().addShutdownHook(Thread { this.stopServerInternal() })
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            LoggerX.a(thread.name, "NotificationServer crashed", tr = throwable)
-        }
-        serverThread.start()
-        Looper.loop()
     }
 
     fun syncSettings(settings: ServerSettings) {
@@ -99,7 +76,11 @@ class NotificationServer {
         notificationUtil.syncSettings(settings)
     }
 
-    private fun stopServerInternal() {
+    fun onStart() {
+        serverThread.start()
+    }
+
+    fun onStop() {
         if (cleanedUp) return
         LoggerX.i(TAG, "停止服务")
         cleanedUp = true
@@ -110,7 +91,12 @@ class NotificationServer {
             socket?.let { runCatching { it.close() } }
             notificationUtil.cancelNotification()
             serverSocket.close()
+        }
+        try {
+            LoggerX.flushBlocking()
             LoggerX.writer?.close()
+        } catch (e: Exception) {
+            LoggerX.e(TAG, "onStop: 刷新日志缓冲失败", tr = e, notWrite = true)
         }
     }
 

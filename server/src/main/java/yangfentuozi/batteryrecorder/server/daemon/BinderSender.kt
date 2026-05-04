@@ -1,4 +1,4 @@
-package yangfentuozi.batteryrecorder.server
+package yangfentuozi.batteryrecorder.server.daemon
 
 import androidx.annotation.Keep
 import yangfentuozi.batteryrecorder.shared.util.LoggerX

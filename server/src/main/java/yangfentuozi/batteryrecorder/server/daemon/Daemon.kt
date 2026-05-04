@@ -1,55 +1,55 @@
-package yangfentuozi.batteryrecorder.server
+package yangfentuozi.batteryrecorder.server.daemon
 
 import android.ddm.DdmHandleAppName
+import android.os.Looper
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import androidx.annotation.Keep
-import yangfentuozi.batteryrecorder.server.notification.server.NotificationServer
 import yangfentuozi.batteryrecorder.shared.Constants
+import yangfentuozi.batteryrecorder.shared.util.Handlers
 import yangfentuozi.batteryrecorder.shared.util.LoggerX
 import java.io.File
 import java.io.IOException
+import kotlin.system.exitProcess
 
-@Keep
-object Main {
+private const val TAG = "Daemon"
+private val SERVER_CGROUP_DIRS = listOf(
+    "/acct",
+    "/dev/cg2_bpf",
+    "/sys/fs/cgroup",
+    "/dev/memcg/apps"
+)
 
-    private const val TAG = "Main"
-    private const val SERVER_PROCESS_NAME = "batteryrecorder_server"
-    private val SERVER_CGROUP_DIRS = listOf(
-        "/acct",
-        "/dev/cg2_bpf",
-        "/sys/fs/cgroup",
-        "/dev/memcg/apps"
-    )
-
-    @Keep
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val isNotificationServer = args.isNotEmpty() && args[0] == "--notification-server"
-        DdmHandleAppName.setAppName(SERVER_PROCESS_NAME, 0)
+open class Daemon(
+    val procName: String,
+    logSuffix: String = "",
+) {
+    init {
+        DdmHandleAppName.setAppName(procName, 0)
 
         // 配置 LoggerX
         LoggerX.logDirPath = "${Constants.SHELL_DATA_DIR_PATH}/${Constants.SHELL_LOG_DIR_PATH}"
-        if (isNotificationServer) LoggerX.suffix = "-notification-server"
+        LoggerX.suffix = logSuffix
         LoggerX.d(
             TAG,
-            "main: LoggerX 配置完成, dir=${LoggerX.logDirPath}, suffix=${LoggerX.suffix}"
+            "init: LoggerX 配置完成, dir=${LoggerX.logDirPath}, suffix=${LoggerX.suffix}"
         )
 
-        if (!isNotificationServer) {
-            switchCgroupIfNeeded()
-        }
+        // 切换 cgroup
+        switchCgroupIfNeeded()
 
-        // 设置OOM保活
+        // 设置 OOM 保活
         setSelfOomScoreAdj()
 
-        if (isNotificationServer) {
-            LoggerX.i(TAG, "main: 初始化 NotificationServer")
-            NotificationServer()
-        } else {
-            LoggerX.i(TAG, "main: 初始化 Server")
-            Server()
+        if (Looper.getMainLooper() == null) {
+            @Suppress("DEPRECATION")
+            Looper.prepareMainLooper()
+        }
+        Handlers.initMainThread()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            LoggerX.a(thread.name, "NotificationServer crashed", tr = throwable)
+            Handlers.main.post { exitProcess(255) }
         }
     }
 
@@ -60,7 +60,8 @@ object Main {
             oomScoreAdjFile.writeText("$oomScoreAdjValue\n")
             val actualValue: String = oomScoreAdjFile.readText().trim()
             if (oomScoreAdjValue.toString() != actualValue) {
-                LoggerX.e(TAG, 
+                LoggerX.e(
+                    TAG,
                     "setSelfOomScoreAdj: 设置 oom_score_adj 失败, expected=$oomScoreAdjValue actual=$actualValue"
                 )
                 return
@@ -93,7 +94,7 @@ object Main {
             } catch (_: Exception) {
                 null
             } ?: return@forEach
-            if (cmdline != SERVER_PROCESS_NAME) return@forEach
+            if (cmdline != procName) return@forEach
 
             try {
                 Os.kill(pid, OsConstants.SIGKILL)

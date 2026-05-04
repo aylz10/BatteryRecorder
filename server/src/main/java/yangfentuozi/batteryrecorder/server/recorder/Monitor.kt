@@ -37,10 +37,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+private const val TAG = "Monitor"
+
 class Monitor(
     private val writer: PowerRecordWriter,
     private val sampler: Sampler,
-    var bridge: ChildServerBridge?
 ) {
     private val iActivityTaskManager =
         IActivityTaskManager.Stub.asInterface(ServiceManager.getService("activity_task"))
@@ -54,7 +55,7 @@ class Monitor(
         }
     }
 
-    private val tag = "Monitor"
+    var bridge: ChildServerBridge? = null
 
     private var displayCallback: IDisplayManagerCallback? = null
 
@@ -81,7 +82,7 @@ class Monitor(
             val oldValue = field
             if (oldValue == value) return
             field = value
-            LoggerX.d(tag, "screenOffRecord: 配置变更, $oldValue -> $value")
+            LoggerX.d(TAG, "screenOffRecord: 配置变更, $oldValue -> $value")
             updatePreciseScreenOffWakeLockState()
         }
 
@@ -91,7 +92,7 @@ class Monitor(
             val oldValue = field
             if (oldValue == value) return
             field = value
-            LoggerX.d(tag, "preciseScreenOffRecordEnabled: 配置变更, $oldValue -> $value")
+            LoggerX.d(TAG, "preciseScreenOffRecordEnabled: 配置变更, $oldValue -> $value")
             if (!oldValue && value) {
                 preparePreciseScreenOffWakeLock()
             }
@@ -118,16 +119,16 @@ class Monitor(
             val oldValue = mAlwaysPollingScreenStatusEnabled
             if (value != oldValue) {
                 mAlwaysPollingScreenStatusEnabled = value
-                LoggerX.d(tag, "alwaysPollingScreenStatusEnabled: 配置变更, $oldValue -> $value")
+                LoggerX.d(TAG, "alwaysPollingScreenStatusEnabled: 配置变更, $oldValue -> $value")
                 if (value) {
                     LoggerX.d(
-                        tag,
+                        TAG,
                         "alwaysPollingScreenStatusEnabled: 切到轮询模式, 清空 DisplayCallback 引用"
                     )
                     unregisterDisplayEventCallback()
                 } else {
                     LoggerX.d(
-                        tag,
+                        TAG,
                         "alwaysPollingScreenStatusEnabled: 切到回调模式, 注册 DisplayCallback"
                     )
                     registerDisplayEventCallback()
@@ -139,7 +140,7 @@ class Monitor(
     private var paused = false
 
     @Volatile
-    private var stopped = false
+    private var isStopped = false
     private var preciseScreenOffWakeLock: PowerManager.WakeLock? = null
 
     @Volatile
@@ -151,7 +152,7 @@ class Monitor(
         get() = Handlers.getHandler("CallbackThread")
     private var thread = Thread({
         lock.withLock {
-            while (!stopped) {
+            while (!isStopped) {
                 try {
                     val timestamp = System.currentTimeMillis()
                     val sample = sampler.sample()
@@ -161,7 +162,7 @@ class Monitor(
                     val foregroundApp = currForegroundApp
                     if (foregroundApp != lastSampleLoggedForegroundApp) {
                         LoggerX.v(
-                            tag,
+                            TAG,
                             "foreground:sample-foreground-changed timestamp=$timestamp pkg=$foregroundApp"
                         )
                         lastSampleLoggedForegroundApp = foregroundApp
@@ -171,7 +172,7 @@ class Monitor(
                         val latestIsInteractive = iPowerManager.isInteractive
                         if (oldIsInteractive != latestIsInteractive) {
                             LoggerX.d(
-                                tag,
+                                TAG,
                                 "@thread: 亮屏状态变化, $oldIsInteractive -> $latestIsInteractive"
                             )
                         }
@@ -220,7 +221,7 @@ class Monitor(
                                 }
                             } catch (e: RemoteException) {
                                 LoggerX.e(
-                                    tag,
+                                    TAG,
                                     "@callbackHandlerPost: 记录回调失败",
                                     tr = e
                                 )
@@ -229,13 +230,13 @@ class Monitor(
                         callbacks.finishBroadcast()
                     }
                 } catch (e: IOException) {
-                    LoggerX.e(tag, "@thread: 读取功耗数据失败", tr = e)
+                    LoggerX.e(TAG, "@thread: 读取功耗数据失败", tr = e)
                 }
 
                 if (isInteractive || screenOffRecord) {
                     if (paused) {
                         LoggerX.d(
-                            tag,
+                            TAG,
                             "@thread: 恢复采样, isInteractive=$isInteractive screenOffRecord=$screenOffRecord"
                         )
                     }
@@ -244,15 +245,15 @@ class Monitor(
                 } else {
                     paused = true
                     if (alwaysPollingScreenStatusEnabled) {
-                        LoggerX.d(tag, "@thread: 暂停采样, 等待轮询亮屏")
+                        LoggerX.d(TAG, "@thread: 暂停采样, 等待轮询亮屏")
 
-                        while (!stopped && !screenOffRecord && !isInteractive && alwaysPollingScreenStatusEnabled) {
+                        while (!isStopped && !screenOffRecord && !isInteractive && alwaysPollingScreenStatusEnabled) {
                             condition.await(recordIntervalMs, TimeUnit.MILLISECONDS)
                             isInteractive = iPowerManager.isInteractive
                             updatePreciseScreenOffWakeLockState()
                         }
                     } else {
-                        LoggerX.d(tag, "@thread: 暂停采样, 等待亮屏事件")
+                        LoggerX.d(TAG, "@thread: 暂停采样, 等待亮屏事件")
                         condition.await()
                     }
                 }
@@ -263,7 +264,7 @@ class Monitor(
 
     fun start() {
         LoggerX.d(
-            tag,
+            TAG,
             "start: alwaysPollingScreenStatusEnabled=$alwaysPollingScreenStatusEnabled screenOffRecord=$screenOffRecord preciseScreenOffRecordEnabled=$preciseScreenOffRecordEnabled"
         )
         if (preciseScreenOffRecordEnabled) {
@@ -272,7 +273,7 @@ class Monitor(
         try {
             iActivityTaskManager.registerTaskStackListener(taskStackListener)
             if (!alwaysPollingScreenStatusEnabled) {
-                LoggerX.d(tag, "start: 分支命中, 注册 DisplayCallback")
+                LoggerX.d(TAG, "start: 分支命中, 注册 DisplayCallback")
                 registerDisplayEventCallback()
             }
         } catch (e: RemoteException) {
@@ -287,7 +288,7 @@ class Monitor(
         }
         isInteractive = iPowerManager.isInteractive
         updatePreciseScreenOffWakeLockState()
-        LoggerX.d(tag, "start: initial isInteractive=$isInteractive")
+        LoggerX.d(TAG, "start: initial isInteractive=$isInteractive")
         thread.start()
     }
 
@@ -300,22 +301,22 @@ class Monitor(
     private fun preparePreciseScreenOffWakeLock() {
         val wakeLock = requirePreciseScreenOffWakeLock()
         if (wakeLock != null) {
-            LoggerX.d(tag, "preparePreciseScreenOffWakeLock: 唤醒锁实例预创建完成")
+            LoggerX.d(TAG, "preparePreciseScreenOffWakeLock: 唤醒锁实例预创建完成")
         }
     }
 
     private fun registerDisplayEventCallback() {
         if (displayCallbackRegistered) {
-            LoggerX.v(tag, "registerDisplayEventCallback: 已注册, skip")
+            LoggerX.v(TAG, "registerDisplayEventCallback: 已注册, skip")
             return
         }
-        LoggerX.d(tag, "registerDisplayEventCallback: 注册 DisplayCallback")
+        LoggerX.d(TAG, "registerDisplayEventCallback: 注册 DisplayCallback")
         displayCallback = object : IDisplayManagerCallback.Stub() {
             @Keep
             override fun onDisplayEvent(displayId: Int, event: Int) {
                 if (alwaysPollingScreenStatusEnabled) {
                     LoggerX.v(
-                        tag,
+                        TAG,
                         "onDisplayEvent: 已忽略, 当前为轮询模式, displayId=$displayId event=$event"
                     )
                     return
@@ -325,11 +326,11 @@ class Monitor(
                 isInteractive = latestIsInteractive
                 updatePreciseScreenOffWakeLockState()
                 LoggerX.d(
-                    tag,
+                    TAG,
                     "onDisplayEvent: displayId=$displayId event=$event interactive $oldIsInteractive -> $latestIsInteractive paused=$paused"
                 )
                 if (isInteractive && paused) {
-                    LoggerX.d(tag, "onDisplayEvent: 收到亮屏事件, 唤醒采样线程")
+                    LoggerX.d(TAG, "onDisplayEvent: 收到亮屏事件, 唤醒采样线程")
                     notifyLock()
                 }
             }
@@ -342,22 +343,23 @@ class Monitor(
      * 自实现注销屏幕事件回调，系统服务端检测进程退出自动处理
      */
     private fun unregisterDisplayEventCallback() {
-        LoggerX.v(tag, "unregisterDisplayEventCallback: 清空 DisplayCallback 引用")
+        LoggerX.v(TAG, "unregisterDisplayEventCallback: 清空 DisplayCallback 引用")
         displayCallback = null
         displayCallbackRegistered = false
     }
 
-    fun stop() {
-        stopped = true
+    fun onStop() {
+        isStopped = true
         notifyLock()
         releasePreciseScreenOffWakeLockIfHeld("服务停止")
         try {
             iActivityTaskManager.unregisterTaskStackListener(taskStackListener)
         } catch (e: RemoteException) {
-            LoggerX.e(tag, "stop: 注销任务栈监听失败", tr = e)
+            LoggerX.e(TAG, "stop: 注销任务栈监听失败", tr = e)
         }
         notificationUtil?.cancelNotification()
         notificationUtil = null
+        bridge?.stop()
     }
 
     fun notifyLock() {
@@ -367,12 +369,12 @@ class Monitor(
     }
 
     fun registerRecordListener(callback: IRecordListener) {
-        LoggerX.v(tag, "registerRecordListener: 注册记录回调")
+        LoggerX.v(TAG, "registerRecordListener: 注册记录回调")
         callbacks.register(callback)
     }
 
     fun unregisterRecordListener(callback: IRecordListener) {
-        LoggerX.v(tag, "unregisterRecordListener: 注销记录回调")
+        LoggerX.v(TAG, "unregisterRecordListener: 注销记录回调")
         callbacks.unregister(callback)
     }
 
@@ -394,7 +396,7 @@ class Monitor(
         val bounds = try {
             TaskInfoCompat.getBoundsOrNull(iActivityTaskManager, taskInfo, focusedRootTaskInfo)
         } catch (e: RemoteException) {
-            LoggerX.e(tag, "前台应用检测: 获取任务窗口边界失败, 跳过本次前台应用更新", tr = e)
+            LoggerX.e(TAG, "前台应用检测: 获取任务窗口边界失败, 跳过本次前台应用更新", tr = e)
             return
         }
         val maxBounds = TaskInfoCompat.getMaxBoundsOrNull(focusedRootTaskInfo)
@@ -402,7 +404,7 @@ class Monitor(
         val maxBoundsText = formatRect(maxBounds)
         if (componentName == null) {
             LoggerX.v(
-                tag,
+                TAG,
                 "前台应用检测: source=%s taskId=%d 当前应用包名=无 是否小窗=未知 是否切换前台应用=否 原因=当前任务没有顶部Activity 当前窗口=%s 最大窗口=%s 旧前台应用=%s",
                 source,
                 taskInfo.taskId,
@@ -417,7 +419,7 @@ class Monitor(
         val isSmallWindow = isSmallWindow(bounds, maxBounds)
         if (isSmallWindow) {
             LoggerX.d(
-                tag,
+                TAG,
                 "前台应用检测: source=%s taskId=%d 当前应用包名=%s 当前Activity=%s 是否小窗=是 是否切换前台应用=否 原因=命中小窗规则 当前窗口=%s 最大窗口=%s 旧前台应用=%s",
                 source,
                 taskInfo.taskId,
@@ -431,7 +433,7 @@ class Monitor(
         }
         val changedForegroundApp = oldForegroundApp != packageName
         LoggerX.v(
-            tag,
+            TAG,
             "前台应用检测: source=%s taskId=%d 当前应用包名=%s 当前Activity=%s 是否小窗=否 是否切换前台应用=%s 原因=%s 当前窗口=%s 最大窗口=%s 旧前台应用=%s 新前台应用=%s",
             source,
             taskInfo.taskId,
@@ -480,7 +482,7 @@ class Monitor(
     private fun getFocusedRootTaskInfoOrNull(): RootTaskInfo? = try {
         iActivityTaskManager.getFocusedRootTaskInfo()
     } catch (e: RemoteException) {
-        LoggerX.e(tag, "前台应用检测: 获取当前焦点 RootTask 信息失败, 跳过本次前台应用更新", tr = e)
+        LoggerX.e(TAG, "前台应用检测: 获取当前焦点 RootTask 信息失败, 跳过本次前台应用更新", tr = e)
         null
     }
 
@@ -522,9 +524,9 @@ class Monitor(
                     !preciseScreenOffWakeLockDisabledForCurrentServer &&
                     screenOffRecord &&
                     !isInteractive &&
-                    !stopped
+                    !isStopped
         val currentReason = when {
-            stopped -> "服务停止"
+            isStopped -> "服务停止"
             preciseScreenOffWakeLockDisabledForCurrentServer -> "当前服务已禁用精确息屏记录"
             isInteractive -> "屏幕亮起"
             !screenOffRecord -> "息屏记录关闭"
@@ -536,7 +538,7 @@ class Monitor(
         if (shouldHoldWakeLock) {
             if (wakeLock == null) {
                 LoggerX.e(
-                    tag,
+                    TAG,
                     "updatePreciseScreenOffWakeLockState: 满足持锁条件但唤醒锁尚未初始化"
                 )
                 lastPreciseScreenOffWakeLockDecisionReason = "唤醒锁未初始化"
@@ -544,21 +546,21 @@ class Monitor(
             }
             if (!wakeLock.isHeld) {
                 LoggerX.d(
-                    tag,
-                    "updatePreciseScreenOffWakeLockState: 准备持有唤醒锁, preciseScreenOffRecordEnabled=$preciseScreenOffRecordEnabled screenOffRecord=$screenOffRecord isInteractive=$isInteractive stopped=$stopped"
+                    TAG,
+                    "updatePreciseScreenOffWakeLockState: 准备持有唤醒锁, preciseScreenOffRecordEnabled=$preciseScreenOffRecordEnabled screenOffRecord=$screenOffRecord isInteractive=$isInteractive stopped=$isStopped"
                 )
                 wakeLock.acquire()
                 if (wakeLock.isHeld) {
-                    LoggerX.i(tag, "updatePreciseScreenOffWakeLockState: 已持有唤醒锁")
+                    LoggerX.i(TAG, "updatePreciseScreenOffWakeLockState: 已持有唤醒锁")
                 } else {
                     LoggerX.w(
-                        tag,
+                        TAG,
                         "updatePreciseScreenOffWakeLockState: acquire() 返回后仍未持有唤醒锁"
                     )
                 }
             } else {
                 LoggerX.d(
-                    tag,
+                    TAG,
                     "updatePreciseScreenOffWakeLockState: 唤醒锁已处于持有状态，跳过重复 acquire"
                 )
             }
@@ -573,8 +575,8 @@ class Monitor(
         }
         if (lastPreciseScreenOffWakeLockDecisionReason != currentReason) {
             LoggerX.d(
-                tag,
-                "updatePreciseScreenOffWakeLockState: 当前不持有唤醒锁, reason=$currentReason preciseScreenOffRecordEnabled=$preciseScreenOffRecordEnabled screenOffRecord=$screenOffRecord isInteractive=$isInteractive stopped=$stopped"
+                TAG,
+                "updatePreciseScreenOffWakeLockState: 当前不持有唤醒锁, reason=$currentReason preciseScreenOffRecordEnabled=$preciseScreenOffRecordEnabled screenOffRecord=$screenOffRecord isInteractive=$isInteractive stopped=$isStopped"
             )
             lastPreciseScreenOffWakeLockDecisionReason = currentReason
         }
@@ -590,13 +592,13 @@ class Monitor(
     private fun releasePreciseScreenOffWakeLockIfHeld(reason: String) {
         val wakeLock = preciseScreenOffWakeLock ?: return
         if (!wakeLock.isHeld) return
-        LoggerX.d(tag, "releasePreciseScreenOffWakeLockIfHeld: 准备释放唤醒锁, reason=$reason")
+        LoggerX.d(TAG, "releasePreciseScreenOffWakeLockIfHeld: 准备释放唤醒锁, reason=$reason")
         wakeLock.release()
         if (!wakeLock.isHeld) {
-            LoggerX.i(tag, "releasePreciseScreenOffWakeLockIfHeld: 已释放唤醒锁, reason=$reason")
+            LoggerX.i(TAG, "releasePreciseScreenOffWakeLockIfHeld: 已释放唤醒锁, reason=$reason")
         } else {
             LoggerX.w(
-                tag,
+                TAG,
                 "releasePreciseScreenOffWakeLockIfHeld: release() 返回后仍处于持有状态, reason=$reason"
             )
         }
@@ -612,35 +614,35 @@ class Monitor(
     private fun requirePreciseScreenOffWakeLock(): PowerManager.WakeLock? {
         if (preciseScreenOffWakeLockDisabledForCurrentServer) {
             LoggerX.d(
-                tag,
+                TAG,
                 "requirePreciseScreenOffWakeLock: 当前服务已禁用精确息屏记录，跳过唤醒锁初始化"
             )
             return null
         }
         preciseScreenOffWakeLock?.let {
             LoggerX.d(
-                tag,
+                TAG,
                 "requirePreciseScreenOffWakeLock: 复用已有唤醒锁实例, held=${it.isHeld}"
             )
             return it
         }
         try {
-            LoggerX.d(tag, "requirePreciseScreenOffWakeLock: 开始创建唤醒锁实例")
-            LoggerX.d(tag, "requirePreciseScreenOffWakeLock: 开始获取 systemContext")
+            LoggerX.d(TAG, "requirePreciseScreenOffWakeLock: 开始创建唤醒锁实例")
+            LoggerX.d(TAG, "requirePreciseScreenOffWakeLock: 开始获取 systemContext")
             val systemContext = FakeContext.systemContext
             LoggerX.d(
-                tag,
+                TAG,
                 "requirePreciseScreenOffWakeLock: 获取 systemContext 成功, context=${systemContext.javaClass.name}"
             )
-            LoggerX.d(tag, "requirePreciseScreenOffWakeLock: 开始获取 PowerManager")
+            LoggerX.d(TAG, "requirePreciseScreenOffWakeLock: 开始获取 PowerManager")
             val powerManager = systemContext.getSystemService(PowerManager::class.java)
                 ?: throw IllegalStateException("获取 PowerManager 失败")
             LoggerX.d(
-                tag,
+                TAG,
                 "requirePreciseScreenOffWakeLock: 获取 PowerManager 成功, service=${powerManager.javaClass.name}"
             )
             LoggerX.d(
-                tag,
+                TAG,
                 "requirePreciseScreenOffWakeLock: 开始调用 newWakeLock, tag=$PRECISE_SCREEN_OFF_WAKE_LOCK_TAG"
             )
             return powerManager.newWakeLock(
@@ -650,15 +652,15 @@ class Monitor(
                 setReferenceCounted(false)
                 preciseScreenOffWakeLock = this
                 LoggerX.d(
-                    tag,
+                    TAG,
                     "requirePreciseScreenOffWakeLock: 唤醒锁实例创建完成, tag=$PRECISE_SCREEN_OFF_WAKE_LOCK_TAG held=$isHeld"
                 )
             }
         } catch (t: Throwable) {
-            LoggerX.e(tag, "requirePreciseScreenOffWakeLock: 创建唤醒锁失败", tr = t)
+            LoggerX.e(TAG, "requirePreciseScreenOffWakeLock: 创建唤醒锁失败", tr = t)
             preciseScreenOffWakeLockDisabledForCurrentServer = true
             preciseScreenOffWakeLock = null
-            LoggerX.w(tag, "requirePreciseScreenOffWakeLock: 当前服务已静默禁用精确息屏记录")
+            LoggerX.w(TAG, "requirePreciseScreenOffWakeLock: 当前服务已静默禁用精确息屏记录")
             return null
         }
     }

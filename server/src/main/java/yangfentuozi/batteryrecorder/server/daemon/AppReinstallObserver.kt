@@ -1,4 +1,4 @@
-package yangfentuozi.batteryrecorder.server
+package yangfentuozi.batteryrecorder.server.daemon
 
 import android.content.pm.ApplicationInfo
 import android.os.FileObserver
